@@ -1,0 +1,45 @@
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+
+# Python Virtual Environments & Packages
+.venv/
+venv/
+ENV/
+env/
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Frontend / Node
+frontend/node_modules/
+node_modules/
+frontend/dist/
+dist/
+.npm
+*.log
+
+# Project Downloads & Logs
+downloads/
+logs/
+*.log
+
+# Database files
+*.sqlite3
+*.db
+
+# OS / Editor Files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

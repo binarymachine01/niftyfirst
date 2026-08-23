@@ -1,0 +1,125 @@
+import React, { useState, useEffect } from 'react';
+import Navbar from './components/Navbar';
+import BacktestConfigForm from './components/BacktestConfigForm';
+import MetricCards from './components/MetricCards';
+import EquityCurveChart from './components/EquityCurveChart';
+import DrawdownChart from './components/DrawdownChart';
+import TradeLogTable from './components/TradeLogTable';
+import DealsExplorer from './components/DealsExplorer';
+import StockInspector from './components/StockInspector';
+import SystemStatus from './components/SystemStatus';
+import { api } from './services/api';
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState('backtest');
+  const [systemStatus, setSystemStatus] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState(null);
+  const [error, setError] = useState(null);
+
+  const [config, setConfig] = useState({
+    holding_days: 20,
+    categories: ['Insider Trading', 'SAST Deals', 'Block Deals', 'Bulk Deals'],
+    action: 'BUY',
+    min_value_lakhs: 0,
+    stop_loss_pct: null,
+    take_profit_pct: null,
+    initial_capital: 1000000,
+    position_size_pct: 10,
+  });
+
+  const fetchStatus = async () => {
+    try {
+      const res = await api.getSystemStatus();
+      setSystemStatus(res);
+    } catch (err) {
+      console.error('Failed to load system status:', err);
+    }
+  };
+
+  const handleRunBacktest = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.runBacktest(config);
+      if (res.status === 'success') {
+        setResults(res.data);
+      } else {
+        setError('Backtest completed with error');
+      }
+    } catch (err) {
+      console.error(err);
+      setError(err.response?.data?.detail || 'Failed to execute backtest simulation.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStatus();
+    // Run initial backtest on load
+    handleRunBacktest();
+  }, []);
+
+  return (
+    <div className="min-h-screen flex flex-col bg-[#0a0e17] text-slate-100">
+      <Navbar activeTab={activeTab} setActiveTab={setActiveTab} systemStatus={systemStatus} />
+
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Tab 1: Backtesting Lab */}
+        {activeTab === 'backtest' && (
+          <div className="space-y-6">
+            {error && (
+              <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-medium">
+                {error}
+              </div>
+            )}
+
+            {/* Top Metric Cards */}
+            {results && <MetricCards summary={results.summary} />}
+
+            {/* Backtest Strategy Controls & Charts */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Left Column: Config Form (4 cols) */}
+              <div className="lg:col-span-4">
+                <BacktestConfigForm
+                  config={config}
+                  setConfig={setConfig}
+                  onRunBacktest={handleRunBacktest}
+                  loading={loading}
+                />
+              </div>
+
+              {/* Right Column: Visual Charts (8 cols) */}
+              <div className="lg:col-span-8 space-y-6">
+                <EquityCurveChart data={results?.equity_curve} />
+                {results?.equity_curve && results.equity_curve.length > 0 && (
+                  <DrawdownChart data={results.equity_curve} />
+                )}
+              </div>
+            </div>
+
+            {/* Trade Log Execution Table */}
+            {results?.trades && <TradeLogTable trades={results.trades} />}
+          </div>
+        )}
+
+        {/* Tab 2: Deals Explorer */}
+        {activeTab === 'deals' && <DealsExplorer />}
+
+        {/* Tab 3: Stock Inspector */}
+        {activeTab === 'stocks' && <StockInspector />}
+
+        {/* Tab 4: Database & Pipeline System */}
+        {activeTab === 'system' && (
+          <SystemStatus systemStatus={systemStatus} onRefreshStatus={fetchStatus} />
+        )}
+      </main>
+
+      {/* Footer */}
+      <footer className="border-t border-white/5 py-6 text-center text-xs text-slate-500 font-mono">
+        NiftyFirst Quantitative Market Data & Backtesting Suite • Powered by FastAPI & React
+      </footer>
+    </div>
+  );
+}

@@ -1,0 +1,3 @@
+"""
+StockEdge Deals Extractor package.
+"""
