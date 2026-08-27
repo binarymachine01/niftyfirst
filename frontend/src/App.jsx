@@ -17,6 +17,29 @@ export default function App() {
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
 
+  // Theme management: 'dark' | 'light'
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem('niftyfirst_theme');
+    if (saved) return saved;
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+      root.classList.remove('light');
+    } else {
+      root.classList.remove('dark');
+      root.classList.add('light');
+    }
+    localStorage.setItem('niftyfirst_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
+
   const [config, setConfig] = useState({
     holding_days: 20,
     categories: ['Insider Trading', 'SAST Deals', 'Block Deals', 'Bulk Deals'],
@@ -62,15 +85,21 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0a0e17] text-slate-100">
-      <Navbar activeTab={activeTab} setActiveTab={setActiveTab} systemStatus={systemStatus} />
+    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#0a0e17] text-slate-900 dark:text-slate-100 transition-colors duration-300">
+      <Navbar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        systemStatus={systemStatus}
+        theme={theme}
+        toggleTheme={toggleTheme}
+      />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Tab 1: Backtesting Lab */}
         {activeTab === 'backtest' && (
           <div className="space-y-6">
             {error && (
-              <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-medium">
+              <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-medium">
                 {error}
               </div>
             )}
@@ -92,9 +121,9 @@ export default function App() {
 
               {/* Right Column: Visual Charts (8 cols) */}
               <div className="lg:col-span-8 space-y-6">
-                <EquityCurveChart data={results?.equity_curve} />
+                <EquityCurveChart data={results?.equity_curve} theme={theme} />
                 {results?.equity_curve && results.equity_curve.length > 0 && (
-                  <DrawdownChart data={results.equity_curve} />
+                  <DrawdownChart data={results.equity_curve} theme={theme} />
                 )}
               </div>
             </div>
@@ -108,18 +137,19 @@ export default function App() {
         {activeTab === 'deals' && <DealsExplorer />}
 
         {/* Tab 3: Stock Inspector */}
-        {activeTab === 'stocks' && <StockInspector />}
+        {activeTab === 'stocks' && <StockInspector theme={theme} />}
 
-        {/* Tab 4: Database & Pipeline System */}
+        {/* Tab 4: System Health & Data Pipelines */}
         {activeTab === 'system' && (
           <SystemStatus systemStatus={systemStatus} onRefreshStatus={fetchStatus} />
         )}
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-white/5 py-6 text-center text-xs text-slate-500 font-mono">
-        NiftyFirst Quantitative Market Data & Backtesting Suite • Powered by FastAPI & React
+      <footer className="border-t border-slate-200 dark:border-white/5 py-6 text-center text-xs text-slate-500 dark:text-slate-500 font-mono transition-colors">
+        NiftyFirst Quantitative Market Data & Backtesting Suite
       </footer>
     </div>
   );
 }
+

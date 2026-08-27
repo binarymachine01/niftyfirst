@@ -26,6 +26,7 @@ frontend/dist/
 dist/
 .npm
 *.log
+*.timestamp-*.mjs
 
 # Project Downloads & Logs
 downloads/

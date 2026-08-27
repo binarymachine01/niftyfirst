@@ -77,27 +77,27 @@ export default function DealsExplorer() {
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     {cat.deal_category}
                   </div>
-                  <div className="p-2 rounded-xl bg-white/[0.04] text-cyan-400 border border-white/[0.08]">
+                  <div className="p-2 rounded-xl bg-slate-100 dark:bg-white/[0.04] text-cyan-600 dark:text-cyan-400 border border-slate-200 dark:border-white/[0.08]">
                     <Layers className="w-4 h-4" />
                   </div>
                 </div>
 
-                <div className="text-2xl font-black font-mono text-white mt-1">
-                  {cat.count.toLocaleString()} <span className="text-xs text-slate-400 font-sans font-normal">Deals</span>
+                <div className="text-2xl font-black font-mono text-slate-900 dark:text-white mt-1">
+                  {cat.count.toLocaleString()} <span className="text-xs text-slate-500 dark:text-slate-400 font-sans font-normal">Deals</span>
                 </div>
 
                 {/* Progress bar for buy vs sell ratio */}
                 <div className="mt-3 space-y-1.5">
                   <div className="flex justify-between text-[11px] font-mono">
-                    <span className="text-emerald-400 font-bold">{cat.buy_count} Buys ({buyRatio}%)</span>
-                    <span className="text-rose-400 font-bold">{cat.sell_count} Sells</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-bold">{cat.buy_count} Buys ({buyRatio}%)</span>
+                    <span className="text-rose-600 dark:text-rose-400 font-bold">{cat.sell_count} Sells</span>
                   </div>
-                  <div className="w-full h-1.5 bg-rose-500/30 rounded-full overflow-hidden">
+                  <div className="w-full h-1.5 bg-rose-500/20 dark:bg-rose-500/30 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-emerald-400 rounded-full"
+                      className="h-full bg-emerald-500 dark:bg-emerald-400 rounded-full"
                       style={{ width: `${buyRatio}%` }}
                     />
                   </div>
@@ -111,14 +111,14 @@ export default function DealsExplorer() {
       {/* Main Deals Table Panel */}
       <div className="glass-panel p-6 rounded-2xl">
         {/* Controls */}
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-white/[0.08] mb-5">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-white/[0.08] mb-5">
           <div>
-            <h2 className="text-base font-extrabold text-white flex items-center gap-2 tracking-tight">
-              <Layers className="w-5 h-5 text-cyan-400" />
+            <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2 tracking-tight">
+              <Layers className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
               Live Market Deals & Disclosures Repository
             </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Showing {deals.length} of {totalCount.toLocaleString()} indexed records in PostgreSQL
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Showing {deals.length} of {totalCount.toLocaleString()} indexed records in Market Repository
             </p>
           </div>
 
@@ -126,7 +126,7 @@ export default function DealsExplorer() {
           <form onSubmit={handleSearchSubmit} className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
             {/* Search */}
             <div className="relative flex-1 md:w-60">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-400" />
               <input
                 type="text"
                 placeholder="Search security or promoter..."
@@ -176,7 +176,7 @@ export default function DealsExplorer() {
                 fetchDeals();
                 fetchSummary();
               }}
-              className="btn-secondary p-2 text-slate-400 hover:text-white"
+              className="btn-secondary p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               title="Refresh"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -185,9 +185,9 @@ export default function DealsExplorer() {
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
+        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-white/[0.06]">
           <table className="w-full text-left text-xs border-collapse">
-            <thead className="bg-[#0c1222] text-slate-400 uppercase text-[10px] tracking-wider border-b border-white/[0.08]">
+            <thead className="bg-slate-100 dark:bg-[#0c1222] text-slate-700 dark:text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-white/[0.08]">
               <tr>
                 <th className="py-3 px-3.5">ID</th>
                 <th className="py-3 px-3.5">Trade Date</th>
@@ -201,13 +201,13 @@ export default function DealsExplorer() {
                 <th className="py-3 px-3.5">Execution Mode</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/[0.04] font-mono">
+            <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.04] font-mono">
               {loading ? (
                 <tr>
-                  <td colSpan="10" className="py-14 text-center text-slate-400 font-sans">
+                  <td colSpan="10" className="py-14 text-center text-slate-500 dark:text-slate-400 font-sans">
                     <div className="flex items-center justify-center gap-2.5">
-                      <span className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-                      Loading transactions from PostgreSQL...
+                      <span className="w-4 h-4 border-2 border-cyan-500 dark:border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                      Loading market transactions...
                     </div>
                   </td>
                 </tr>
@@ -219,17 +219,17 @@ export default function DealsExplorer() {
                 </tr>
               ) : (
                 deals.map((d) => (
-                  <tr key={`${d.deal_category}-${d.id}`} className="hover:bg-white/[0.025] transition-colors">
-                    <td className="py-3 px-3.5 text-slate-400 font-mono text-[11px]">#{d.id}</td>
-                    <td className="py-3 px-3.5 text-slate-300">{d.trade_date}</td>
+                  <tr key={`${d.deal_category}-${d.id}`} className="hover:bg-slate-100/70 dark:hover:bg-white/[0.025] transition-colors">
+                    <td className="py-3 px-3.5 text-slate-500 dark:text-slate-400 font-mono text-[11px]">#{d.id}</td>
+                    <td className="py-3 px-3.5 text-slate-700 dark:text-slate-300">{d.trade_date}</td>
                     <td className="py-3 px-3.5 font-sans">
                       <span className="badge-tag">{d.deal_category}</span>
                     </td>
                     <td className="py-3 px-3.5 font-sans">
-                      <div className="font-bold text-white text-xs tracking-tight">{d.security_name}</div>
-                      <div className="text-[10px] text-slate-400">{d.exchange_name || 'NSE'}</div>
+                      <div className="font-bold text-slate-900 dark:text-white text-xs tracking-tight">{d.security_name}</div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400">{d.exchange_name || 'NSE'}</div>
                     </td>
-                    <td className="py-3 px-3.5 font-sans text-slate-300 truncate max-w-[190px]" title={d.client_name}>
+                    <td className="py-3 px-3.5 font-sans text-slate-700 dark:text-slate-300 truncate max-w-[190px]" title={d.client_name}>
                       {d.client_name || 'N/A'}
                     </td>
                     <td className="py-3 px-3.5 font-sans">
@@ -237,20 +237,20 @@ export default function DealsExplorer() {
                         {d.action}
                       </span>
                     </td>
-                    <td className="py-3 px-3.5 text-right text-slate-200">
+                    <td className="py-3 px-3.5 text-right text-slate-800 dark:text-slate-200">
                       {d.quantity ? Number(d.quantity).toLocaleString() : '-'}
                     </td>
-                    <td className="py-3 px-3.5 text-right text-slate-200">
+                    <td className="py-3 px-3.5 text-right text-slate-800 dark:text-slate-200">
                       {d.price ? `₹${Number(d.price).toFixed(2)}` : '-'}
                     </td>
-                    <td className="py-3 px-3.5 text-right text-cyan-300 font-bold">
+                    <td className="py-3 px-3.5 text-right text-cyan-700 dark:text-cyan-300 font-bold">
                       {d.total_value
                         ? `₹${(Number(d.total_value) >= 10000000
                             ? (Number(d.total_value) / 10000000).toFixed(2) + ' Cr'
                             : (Number(d.total_value) / 100000).toFixed(2) + ' L')}`
                         : '-'}
                     </td>
-                    <td className="py-3 px-3.5 font-sans text-slate-400 text-[11px] truncate max-w-[130px]">
+                    <td className="py-3 px-3.5 font-sans text-slate-600 dark:text-slate-400 text-[11px] truncate max-w-[130px]">
                       {d.mode_description || '-'}
                     </td>
                   </tr>
@@ -262,9 +262,9 @@ export default function DealsExplorer() {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between pt-4 border-t border-white/[0.08] mt-4 text-xs">
-            <div className="text-slate-400 font-mono">
-              Page <span className="text-white font-bold">{page}</span> of {totalPages} ({totalCount} total)
+          <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-white/[0.08] mt-4 text-xs">
+            <div className="text-slate-500 dark:text-slate-400 font-mono">
+              Page <span className="text-slate-900 dark:text-white font-bold">{page}</span> of {totalPages} ({totalCount} total)
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -288,3 +288,4 @@ export default function DealsExplorer() {
     </div>
   );
 }
+
