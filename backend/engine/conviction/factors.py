@@ -514,6 +514,13 @@ def compute_historical_success(
     past_buy_deals = [d for d in past_buy_deals if d["trade_date"] <= as_of_date]
     sorted_candles = sorted((c for c in candles if c["trade_date"] <= as_of_date), key=lambda c: c["trade_date"])
     events = []
+    # Unlike `events` (gated on the PRIMARY window for scoring, unchanged
+    # below), this collects every event's per-window returns regardless of
+    # whether the primary window elapsed too - so a shorter window (e.g. 1D)
+    # can report on more recent events than the scoring-relevant sample.
+    # Used only for the display-only by_window breakdown; never fed into
+    # the score itself.
+    all_window_returns = []
 
     for d in past_buy_deals:
         deal_date = d["trade_date"]
@@ -532,12 +539,17 @@ def compute_historical_success(
                 if exit_price > 0:
                     window_returns[w] = ((exit_price - entry_price) / entry_price) * 100.0
 
+        if window_returns:
+            all_window_returns.append(window_returns)
         if cfg.HS_PRIMARY_WINDOW in window_returns:
             events.append(window_returns)
 
+    by_window = _compute_by_window_breakdown(all_window_returns)
+
     if len(events) < cfg.MIN_HISTORICAL_SAMPLE_SIZE:
         return {
-            "available": False, "score": None, "contributions": [], "metrics": {"sample_size": len(events)},
+            "available": False, "score": None, "contributions": [],
+            "metrics": {"sample_size": len(events), "by_window": by_window},
             "unavailable_reason": "insufficient data",
         }
 
@@ -571,6 +583,42 @@ def compute_historical_success(
         "metrics": {
             "sample_size": len(events), "pct_positive": round(pct_positive, 2),
             "avg_return": round(avg_return, 2), "median_return": round(median_return, 2),
+            "by_window": by_window,
         },
         "unavailable_reason": None,
     }
+
+
+def _compute_by_window_breakdown(all_window_returns: List[Dict[int, float]]) -> Dict[str, Any]:
+    """
+    Display-only per-window historical signal breakdown (Stock Intelligence
+    page, Phase 4). Each window's sample is independently qualified (an
+    event only needs THAT window to have elapsed, not the 20D primary
+    window used for scoring) - so a shorter window can have a larger,
+    more current sample than the Conviction Score's own 20D-gated sample.
+    Never used to compute the Conviction Score itself.
+    """
+    breakdown = {}
+    for w in cfg.HISTORICAL_SUCCESS_WINDOWS:
+        values = [wr[w] for wr in all_window_returns if w in wr]
+        if len(values) < cfg.MIN_HISTORICAL_SAMPLE_SIZE:
+            breakdown[str(w)] = {
+                "available": False, "sample_size": len(values),
+                "positive_count": None, "pct_positive": None,
+                "avg_return": None, "median_return": None,
+            }
+            continue
+
+        positive_count = sum(1 for v in values if v > 0)
+        pct_positive = (positive_count / len(values)) * 100.0
+        avg_return = sum(values) / len(values)
+        sorted_values = sorted(values)
+        mid = len(sorted_values) // 2
+        median_return = sorted_values[mid] if len(sorted_values) % 2 else (sorted_values[mid - 1] + sorted_values[mid]) / 2.0
+
+        breakdown[str(w)] = {
+            "available": True, "sample_size": len(values),
+            "positive_count": positive_count, "pct_positive": round(pct_positive, 2),
+            "avg_return": round(avg_return, 2), "median_return": round(median_return, 2),
+        }
+    return breakdown

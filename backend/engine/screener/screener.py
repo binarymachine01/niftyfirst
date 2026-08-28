@@ -72,14 +72,20 @@ def _compute_insider_window_metrics(deals_in_window: List[Dict[str, Any]]) -> Di
         # combined with the BUY/SELL toggles should count insiders matching
         # those active direction(s), not an unqualified union.
         "unique_insiders": len(unique_buyers | unique_sellers),
+        # buy_value/sell_value expose the two sides separately (e.g. Stock
+        # Intelligence's "Buying: X / Selling: Y / Net: Z" display);
+        # total_value/net_value are kept for backward-compatible screener use.
+        "buy_value": sum(buy_values) if buy_values else None,
+        "sell_value": sum(sell_values) if sell_values else None,
         "total_value": (sum(buy_values) + sum(sell_values)) if has_any_value else None,
         "net_value": (sum(buy_values) - sum(sell_values)) if has_any_value else None,
         "promoter_buying": any(d.get("role") == "Promoter" for d in buys),
         "repeat_buying": any(c > 1 for c in buyer_counts.values()),
+        "buyer_counts": buyer_counts,
     }
 
 
-def _build_candidate(
+def build_candidate(
     symbol: str,
     historical_deals: List[Dict[str, Any]],
     insider_window_deals: List[Dict[str, Any]],
@@ -188,7 +194,7 @@ def run_screener(req: flt.ScreenerRequest, as_of_date: Optional[date] = None) ->
             historical_deals = grouped_deals[symbol]
             insider_window_deals = [d for d in historical_deals if d["trade_date"] >= insider_window_start]
             candles = price_map.get(symbol, [])
-            candidates.append(_build_candidate(symbol, historical_deals, insider_window_deals, candles, as_of_date))
+            candidates.append(build_candidate(symbol, historical_deals, insider_window_deals, candles, as_of_date))
         except Exception as e:
             logger.warning(f"Screener failed to build candidate for {symbol}: {e}")
 

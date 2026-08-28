@@ -2,14 +2,19 @@
 API Router for Stock Price History and Deal Overlays.
 """
 
+import logging
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 try:
     from backend.database import fetch_all
     from backend.engine.symbol_matcher import matcher
+    from backend.engine.stock_intelligence import get_stock_intelligence
 except ImportError:
     from ..database import fetch_all
     from ..engine.symbol_matcher import matcher
+    from ..engine.stock_intelligence import get_stock_intelligence
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/stocks", tags=["Stocks"])
 
@@ -100,3 +105,23 @@ def get_stock_deals(symbol: str):
         r["trade_date"] = str(r["trade_date"])
 
     return {"symbol": symbol.upper(), "deals": rows}
+
+
+@router.get("/{symbol}/intelligence")
+def get_intelligence(symbol: str):
+    """
+    Consolidated Stock Intelligence payload: header, Conviction Score
+    (Phase 1, unmodified), Signal Strength (Phase 2, unmodified), insider
+    activity, deal-type breakdown, transaction timeline, and historical
+    signal performance. Everything except the raw candle series (still
+    served by /history, unchanged) so the frontend fires exactly two calls.
+    """
+    try:
+        result = get_stock_intelligence(symbol)
+    except Exception as e:
+        logger.error(f"Stock intelligence failed for {symbol}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to build stock intelligence: {str(e)}")
+
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Unknown NSE symbol '{symbol.upper()}'")
+    return result

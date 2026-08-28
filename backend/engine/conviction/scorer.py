@@ -18,7 +18,7 @@ from . import market_data
 logger = logging.getLogger(__name__)
 
 
-def _serialize_deal(d: Dict[str, Any]) -> Dict[str, Any]:
+def serialize_deal(d: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "id": d.get("id"),
         "deal_category": d.get("deal_category"),
@@ -178,7 +178,7 @@ def build_result(
         "components": components_payload,
         "confidence": confidence,
         "model_version": cfg.MODEL_VERSION,
-        "supporting_transactions": [_serialize_deal(d) for d in sorted(current_deals, key=lambda d: d["trade_date"], reverse=True)],
+        "supporting_transactions": [serialize_deal(d) for d in sorted(current_deals, key=lambda d: d["trade_date"], reverse=True)],
         "data_quality": {
             "market_cap_available": market_cap is not None,
             "market_data_available": market_data_available,

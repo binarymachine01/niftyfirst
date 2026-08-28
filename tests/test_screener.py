@@ -22,7 +22,7 @@ from backend.engine import technical_analysis as ta
 from backend.engine.conviction import scorer as conviction_scorer
 from backend.engine.screener import filters as flt
 from backend.engine.screener import ranking
-from backend.engine.screener.screener import paginate, _compute_insider_window_metrics, _build_candidate
+from backend.engine.screener.screener import paginate, _compute_insider_window_metrics, build_candidate
 
 TODAY = date(2026, 8, 28)
 
@@ -294,7 +294,7 @@ def test_conviction_score_filter():
 # 18. Multiple filters combined (AND semantics)
 # ---------------------------------------------------------------------------
 def test_evaluate_all_requires_every_filter_to_pass():
-    candidate = _build_candidate(
+    candidate = build_candidate(
         "TEST",
         historical_deals=[make_deal("BUY", 5, client_name="A", role="Promoter", total_value=10_000_000.0)],
         insider_window_deals=[make_deal("BUY", 5, client_name="A", role="Promoter", total_value=10_000_000.0)],
@@ -369,7 +369,7 @@ def test_unset_filters_never_exclude_on_missing_data():
 # 22. Empty results (candidate fails every combination)
 # ---------------------------------------------------------------------------
 def test_impossible_filter_combination_yields_no_pass():
-    candidate = _build_candidate(
+    candidate = build_candidate(
         "TEST", historical_deals=[], insider_window_deals=[], candles=[], as_of_date=TODAY,
     )
     req = flt.ScreenerRequest(insider=flt.InsiderFilters(buy=True))
@@ -406,7 +406,7 @@ def test_signal_strength_reasons_are_named_and_real():
     for c in candles[-5:]:
         c["volume"] = 5_000_000
         c["delivery_pct"] = 80.0
-    candidate = _build_candidate("TEST", deals, deals, candles, TODAY)
+    candidate = build_candidate("TEST", deals, deals, candles, TODAY)
     signal = ranking.classify_signal_strength(candidate)
     assert signal["tier"] in ("MODERATE", "STRONG", "VERY STRONG")
     assert len(signal["reasons"]) == signal["evidence_count"]

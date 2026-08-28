@@ -61,7 +61,12 @@ CONVICTION_ACTIONS = ("BUY", "SELL")
 # Price / volume / delivery windows
 # ---------------------------------------------------------------------------
 PRICE_CONFIRMATION_WINDOWS = (5, 10, 20, 30, 60)  # trading days
-HISTORICAL_SUCCESS_WINDOWS = (5, 10, 20, 30)      # trading days
+# 1D and 60D were added for the Stock Intelligence page's Historical Signal
+# Performance display (Phase 4) - HS_PRIMARY_WINDOW (20D) remains the ONLY
+# window used to gate/score the Historical Success factor, so adding
+# windows here only broadens the display-only by_window breakdown in
+# factors.compute_historical_success and never changes the Conviction Score.
+HISTORICAL_SUCCESS_WINDOWS = (1, 5, 10, 20, 30, 60)  # trading days
 
 # Baseline window (trading days, ending 5 days before the deal date) used to
 # compute "normal" volume/delivery for comparison. Kept strictly before the

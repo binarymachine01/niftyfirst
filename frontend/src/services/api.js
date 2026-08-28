@@ -48,6 +48,11 @@ export const api = {
     return response.data;
   },
 
+  getStockIntelligence: async (symbol) => {
+    const response = await client.get(`/api/stocks/${symbol}/intelligence`);
+    return response.data;
+  },
+
   // System & Pipelines
   getSystemStatus: async () => {
     const response = await client.get('/api/system/status');
