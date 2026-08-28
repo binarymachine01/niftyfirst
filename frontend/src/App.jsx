@@ -8,6 +8,7 @@ import TradeLogTable from './components/TradeLogTable';
 import DealsExplorer from './components/DealsExplorer';
 import StockInspector from './components/StockInspector';
 import SystemStatus from './components/SystemStatus';
+import AlertsPanel from './components/AlertsPanel';
 import { api } from './services/api';
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
+  const [alertsCount, setAlertsCount] = useState(0);
 
   // Theme management: 'dark' | 'light'
   const [theme, setTheme] = useState(() => {
@@ -60,6 +62,15 @@ export default function App() {
     }
   };
 
+  const fetchAlertsBadge = async () => {
+    try {
+      const res = await api.getAlertMatches();
+      setAlertsCount(res.total_new_alerts || 0);
+    } catch (err) {
+      console.error('Failed to load alert matches:', err);
+    }
+  };
+
   const handleRunBacktest = async () => {
     setLoading(true);
     setError(null);
@@ -80,6 +91,7 @@ export default function App() {
 
   useEffect(() => {
     fetchStatus();
+    fetchAlertsBadge();
     // Run initial backtest on load
     handleRunBacktest();
   }, []);
@@ -92,6 +104,7 @@ export default function App() {
         systemStatus={systemStatus}
         theme={theme}
         toggleTheme={toggleTheme}
+        alertsCount={alertsCount}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -139,7 +152,10 @@ export default function App() {
         {/* Tab 3: Stock Inspector */}
         {activeTab === 'stocks' && <StockInspector theme={theme} />}
 
-        {/* Tab 4: System Health & Data Pipelines */}
+        {/* Tab 4: Alerts & Saved Filters */}
+        {activeTab === 'alerts' && <AlertsPanel onMatchesRefreshed={setAlertsCount} />}
+
+        {/* Tab 5: System Health & Data Pipelines */}
         {activeTab === 'system' && (
           <SystemStatus systemStatus={systemStatus} onRefreshStatus={fetchStatus} />
         )}

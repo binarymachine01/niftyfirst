@@ -1,6 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Filter, Layers, ChevronLeft, ChevronRight, RefreshCw, ArrowUpRight, ArrowDownRight, ExternalLink, Calendar, Building } from 'lucide-react';
 import { api } from '../services/api';
+import ClientDrilldownModal from './ClientDrilldownModal';
+
+function ReactionCell({ value }) {
+  if (value === null || value === undefined) {
+    return <span className="text-slate-400 dark:text-slate-600">—</span>;
+  }
+  const isUp = value >= 0;
+  return (
+    <span className={`inline-flex items-center gap-0.5 font-bold ${isUp ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+      {isUp ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+      {isUp ? '+' : ''}{value.toFixed(2)}%
+    </span>
+  );
+}
 
 export default function DealsExplorer() {
   const [deals, setDeals] = useState([]);
@@ -12,6 +26,7 @@ export default function DealsExplorer() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [summary, setSummary] = useState(null);
+  const [selectedClient, setSelectedClient] = useState(null);
 
   const fetchDeals = async () => {
     setLoading(true);
@@ -199,12 +214,15 @@ export default function DealsExplorer() {
                 <th className="py-3 px-3.5 text-right">Price (₹)</th>
                 <th className="py-3 px-3.5 text-right">Turnover</th>
                 <th className="py-3 px-3.5">Execution Mode</th>
+                <th className="py-3 px-3.5 text-right">1D</th>
+                <th className="py-3 px-3.5 text-right">5D</th>
+                <th className="py-3 px-3.5 text-right">20D</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.04] font-mono">
               {loading ? (
                 <tr>
-                  <td colSpan="10" className="py-14 text-center text-slate-500 dark:text-slate-400 font-sans">
+                  <td colSpan="13" className="py-14 text-center text-slate-500 dark:text-slate-400 font-sans">
                     <div className="flex items-center justify-center gap-2.5">
                       <span className="w-4 h-4 border-2 border-cyan-500 dark:border-cyan-400 border-t-transparent rounded-full animate-spin" />
                       Loading market transactions...
@@ -213,7 +231,7 @@ export default function DealsExplorer() {
                 </tr>
               ) : deals.length === 0 ? (
                 <tr>
-                  <td colSpan="10" className="py-14 text-center text-slate-500 font-sans">
+                  <td colSpan="13" className="py-14 text-center text-slate-500 font-sans">
                     No transactions found matching your filters.
                   </td>
                 </tr>
@@ -229,8 +247,17 @@ export default function DealsExplorer() {
                       <div className="font-bold text-slate-900 dark:text-white text-xs tracking-tight">{d.security_name}</div>
                       <div className="text-[10px] text-slate-500 dark:text-slate-400">{d.exchange_name || 'NSE'}</div>
                     </td>
-                    <td className="py-3 px-3.5 font-sans text-slate-700 dark:text-slate-300 truncate max-w-[190px]" title={d.client_name}>
-                      {d.client_name || 'N/A'}
+                    <td className="py-3 px-3.5 font-sans truncate max-w-[190px]" title={d.client_name}>
+                      {d.client_name ? (
+                        <button
+                          onClick={() => setSelectedClient(d.client_name)}
+                          className="text-slate-700 dark:text-slate-300 hover:text-cyan-600 dark:hover:text-cyan-400 underline decoration-dotted underline-offset-2 transition-colors"
+                        >
+                          {d.client_name}
+                        </button>
+                      ) : (
+                        'N/A'
+                      )}
                     </td>
                     <td className="py-3 px-3.5 font-sans">
                       <span className={d.action === 'BUY' ? 'badge-buy' : 'badge-sell'}>
@@ -253,6 +280,9 @@ export default function DealsExplorer() {
                     <td className="py-3 px-3.5 font-sans text-slate-600 dark:text-slate-400 text-[11px] truncate max-w-[130px]">
                       {d.mode_description || '-'}
                     </td>
+                    <td className="py-3 px-3.5 text-right"><ReactionCell value={d.price_reaction?.['1d']} /></td>
+                    <td className="py-3 px-3.5 text-right"><ReactionCell value={d.price_reaction?.['5d']} /></td>
+                    <td className="py-3 px-3.5 text-right"><ReactionCell value={d.price_reaction?.['20d']} /></td>
                   </tr>
                 ))
               )}
@@ -285,6 +315,10 @@ export default function DealsExplorer() {
           </div>
         )}
       </div>
+
+      {selectedClient && (
+        <ClientDrilldownModal clientName={selectedClient} onClose={() => setSelectedClient(null)} />
+      )}
     </div>
   );
 }

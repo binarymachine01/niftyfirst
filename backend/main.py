@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from backend.config import CORS_ORIGINS, API_HOST, API_PORT
-from backend.routers import backtest, deals, stocks, system
+from backend.routers import backtest, deals, stocks, system, alerts
 from backend.engine.symbol_matcher import matcher
 
 app = FastAPI(
@@ -40,13 +40,18 @@ app.include_router(backtest.router)
 app.include_router(deals.router)
 app.include_router(stocks.router)
 app.include_router(system.router)
+app.include_router(alerts.router)
 
 
 @app.on_event("startup")
 def startup_event():
-    """Initializes symbol matcher on server startup."""
+    """Initializes symbol matcher and alerts schema on server startup."""
     try:
         matcher.initialize()
+    except Exception:
+        pass
+    try:
+        alerts.ensure_schema()
     except Exception:
         pass
 

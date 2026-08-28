@@ -2,6 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { Search, TrendingUp, Calendar, AlertCircle, ArrowUpRight, ArrowDownRight, BarChart2, Activity } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { api } from '../services/api';
+import ClientDrilldownModal from './ClientDrilldownModal';
+
+function ReactionCell({ value }) {
+  if (value === null || value === undefined) {
+    return <span className="text-slate-400 dark:text-slate-600">—</span>;
+  }
+  const isUp = value >= 0;
+  return (
+    <span className={`inline-flex items-center gap-0.5 font-bold ${isUp ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+      {isUp ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+      {isUp ? '+' : ''}{value.toFixed(2)}%
+    </span>
+  );
+}
 
 export default function StockInspector({ theme = 'dark' }) {
   const [symbol, setSymbol] = useState('HINDUNILVR');
@@ -10,6 +24,7 @@ export default function StockInspector({ theme = 'dark' }) {
   const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [selectedClient, setSelectedClient] = useState(null);
 
   const isLight = theme === 'light';
 
@@ -226,6 +241,9 @@ export default function StockInspector({ theme = 'dark' }) {
                   <th className="py-2.5 px-3.5 text-right">Quantity</th>
                   <th className="py-2.5 px-3.5 text-right">Price</th>
                   <th className="py-2.5 px-3.5 text-right">Total Turnover</th>
+                  <th className="py-2.5 px-3.5 text-right">1D</th>
+                  <th className="py-2.5 px-3.5 text-right">5D</th>
+                  <th className="py-2.5 px-3.5 text-right">20D</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.04]">
@@ -235,7 +253,18 @@ export default function StockInspector({ theme = 'dark' }) {
                     <td className="py-2.5 px-3.5 font-sans">
                       <span className="badge-tag">{d.deal_category}</span>
                     </td>
-                    <td className="py-2.5 px-3.5 font-sans text-slate-700 dark:text-slate-300">{d.client_name}</td>
+                    <td className="py-2.5 px-3.5 font-sans">
+                      {d.client_name ? (
+                        <button
+                          onClick={() => setSelectedClient(d.client_name)}
+                          className="text-slate-700 dark:text-slate-300 hover:text-cyan-600 dark:hover:text-cyan-400 underline decoration-dotted underline-offset-2 transition-colors"
+                        >
+                          {d.client_name}
+                        </button>
+                      ) : (
+                        'N/A'
+                      )}
+                    </td>
                     <td className="py-2.5 px-3.5 font-sans">
                       <span className={d.action === 'BUY' ? 'badge-buy' : 'badge-sell'}>
                         {d.action}
@@ -250,6 +279,9 @@ export default function StockInspector({ theme = 'dark' }) {
                     <td className="py-2.5 px-3.5 text-right text-cyan-700 dark:text-cyan-300 font-bold">
                       {d.total_value ? `₹${(Number(d.total_value) / 100000).toFixed(2)} L` : '-'}
                     </td>
+                    <td className="py-2.5 px-3.5 text-right font-mono"><ReactionCell value={d.price_reaction?.['1d']} /></td>
+                    <td className="py-2.5 px-3.5 text-right font-mono"><ReactionCell value={d.price_reaction?.['5d']} /></td>
+                    <td className="py-2.5 px-3.5 text-right font-mono"><ReactionCell value={d.price_reaction?.['20d']} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -257,6 +289,10 @@ export default function StockInspector({ theme = 'dark' }) {
           </div>
         )}
       </div>
+
+      {selectedClient && (
+        <ClientDrilldownModal clientName={selectedClient} onClose={() => setSelectedClient(null)} />
+      )}
     </div>
   );
 }

@@ -1,11 +1,12 @@
 import React from 'react';
-import { Activity, BarChart3, Layers, Search, Sparkles, Zap, ShieldCheck, Sun, Moon } from 'lucide-react';
+import { Activity, BarChart3, Layers, Search, Sparkles, Zap, ShieldCheck, Sun, Moon, Bell } from 'lucide-react';
 
-export default function Navbar({ activeTab, setActiveTab, systemStatus, theme, toggleTheme }) {
+export default function Navbar({ activeTab, setActiveTab, systemStatus, theme, toggleTheme, alertsCount = 0 }) {
   const tabs = [
     { id: 'backtest', label: 'Backtesting Lab', icon: BarChart3, badge: 'Strategy' },
     { id: 'deals', label: 'Deals Explorer', icon: Layers, badge: 'Live Feeds' },
     { id: 'stocks', label: 'Stock Inspector', icon: Search, badge: 'OHLC' },
+    { id: 'alerts', label: 'Alerts', icon: Bell, badge: 'Watchlists' },
     { id: 'system', label: 'System Health', icon: Activity, badge: 'Pipelines' },
   ];
 
@@ -56,7 +57,12 @@ export default function Navbar({ activeTab, setActiveTab, systemStatus, theme, t
               >
                 <Icon className={`w-4 h-4 ${isActive ? 'text-cyan-600 dark:text-cyan-400' : 'text-slate-500 dark:text-slate-400'}`} />
                 <span>{tab.label}</span>
-                {isActive && (
+                {tab.id === 'alerts' && alertsCount > 0 && (
+                  <span className="flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-black">
+                    {alertsCount > 99 ? '99+' : alertsCount}
+                  </span>
+                )}
+                {isActive && tab.id !== 'alerts' && (
                   <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 dark:bg-cyan-400 animate-pulse shadow-sm shadow-cyan-400" />
                 )}
               </button>

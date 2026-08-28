@@ -7,9 +7,11 @@ from fastapi import APIRouter, HTTPException, Query
 try:
     from backend.database import fetch_all
     from backend.engine.symbol_matcher import matcher
+    from backend.engine.reaction import annotate_price_reactions
 except ImportError:
     from ..database import fetch_all
     from ..engine.symbol_matcher import matcher
+    from ..engine.reaction import annotate_price_reactions
 
 router = APIRouter(prefix="/api/stocks", tags=["Stocks"])
 
@@ -98,5 +100,7 @@ def get_stock_deals(symbol: str):
     rows = fetch_all(query, (f"%{symbol}%", f"{symbol}%"))
     for r in rows:
         r["trade_date"] = str(r["trade_date"])
+
+    annotate_price_reactions(rows, symbol_override=symbol.upper())
 
     return {"symbol": symbol.upper(), "deals": rows}
