@@ -8,6 +8,7 @@ import TradeLogTable from './components/TradeLogTable';
 import DealsExplorer from './components/DealsExplorer';
 import StockInspector from './components/StockInspector';
 import SystemStatus from './components/SystemStatus';
+import InsiderConviction from './components/InsiderConviction';
 import { api } from './services/api';
 
 export default function App() {
@@ -139,7 +140,10 @@ export default function App() {
         {/* Tab 3: Stock Inspector */}
         {activeTab === 'stocks' && <StockInspector theme={theme} />}
 
-        {/* Tab 4: System Health & Data Pipelines */}
+        {/* Tab 4: Insider Conviction Engine */}
+        {activeTab === 'conviction' && <InsiderConviction />}
+
+        {/* Tab 5: System Health & Data Pipelines */}
         {activeTab === 'system' && (
           <SystemStatus systemStatus={systemStatus} onRefreshStatus={fetchStatus} />
         )}

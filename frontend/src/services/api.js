@@ -81,4 +81,25 @@ export const api = {
     const response = await client.post(`/api/system/tasks/${taskId}/stop`);
     return response.data;
   },
+
+  // Insider Conviction Engine
+  getConvictionRanking: async (params = {}) => {
+    const response = await client.get('/api/conviction', { params });
+    return response.data;
+  },
+
+  getConvictionScore: async (symbol) => {
+    const response = await client.get(`/api/conviction/${symbol}`);
+    return response.data;
+  },
+
+  getConvictionExplanation: async (symbol) => {
+    const response = await client.get(`/api/conviction/${symbol}/explanation`);
+    return response.data;
+  },
+
+  getConvictionHistory: async (symbol) => {
+    const response = await client.get(`/api/conviction/${symbol}/history`);
+    return response.data;
+  },
 };

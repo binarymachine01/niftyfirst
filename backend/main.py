@@ -17,8 +17,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from backend.config import CORS_ORIGINS, API_HOST, API_PORT
-from backend.routers import backtest, deals, stocks, system
+from backend.routers import backtest, deals, stocks, system, conviction
 from backend.engine.symbol_matcher import matcher
+from backend.engine.conviction import persistence as conviction_persistence
 
 app = FastAPI(
     title="NiftyFirst Insider Backtesting API",
@@ -40,13 +41,18 @@ app.include_router(backtest.router)
 app.include_router(deals.router)
 app.include_router(stocks.router)
 app.include_router(system.router)
+app.include_router(conviction.router)
 
 
 @app.on_event("startup")
 def startup_event():
-    """Initializes symbol matcher on server startup."""
+    """Initializes symbol matcher and Insider Conviction Engine schema on server startup."""
     try:
         matcher.initialize()
+    except Exception:
+        pass
+    try:
+        conviction_persistence.ensure_schema()
     except Exception:
         pass
 

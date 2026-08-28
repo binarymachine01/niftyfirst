@@ -1,11 +1,12 @@
 import React from 'react';
-import { Activity, BarChart3, Layers, Search, Sparkles, Zap, ShieldCheck, Sun, Moon } from 'lucide-react';
+import { Activity, BarChart3, Layers, Search, Sparkles, Zap, ShieldCheck, Sun, Moon, Gauge } from 'lucide-react';
 
 export default function Navbar({ activeTab, setActiveTab, systemStatus, theme, toggleTheme }) {
   const tabs = [
     { id: 'backtest', label: 'Backtesting Lab', icon: BarChart3, badge: 'Strategy' },
     { id: 'deals', label: 'Deals Explorer', icon: Layers, badge: 'Live Feeds' },
     { id: 'stocks', label: 'Stock Inspector', icon: Search, badge: 'OHLC' },
+    { id: 'conviction', label: 'Insider Conviction', icon: Gauge, badge: 'Scoring' },
     { id: 'system', label: 'System Health', icon: Activity, badge: 'Pipelines' },
   ];
 
