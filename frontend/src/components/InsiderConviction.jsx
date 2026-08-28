@@ -42,11 +42,11 @@ function ScoreGauge({ score }) {
   );
 }
 
-export default function InsiderConviction() {
+export default function InsiderConviction({ initialSymbol = null }) {
   const [ranking, setRanking] = useState([]);
   const [rankingLoading, setRankingLoading] = useState(false);
 
-  const [symbolInput, setSymbolInput] = useState('');
+  const [symbolInput, setSymbolInput] = useState(initialSymbol || '');
   const [selectedSymbol, setSelectedSymbol] = useState(null);
   const [scoreDetail, setScoreDetail] = useState(null);
   const [explanation, setExplanation] = useState(null);
@@ -68,6 +68,17 @@ export default function InsiderConviction() {
   useEffect(() => {
     fetchRanking();
   }, []);
+
+  // Deep-link support: when arriving from the Smart Screener with a
+  // pre-selected symbol, auto-run the inspection instead of duplicating
+  // stock-detail UI in the screener itself.
+  useEffect(() => {
+    if (initialSymbol) {
+      setSymbolInput(initialSymbol);
+      inspectSymbol(initialSymbol);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSymbol]);
 
   const inspectSymbol = async (symbol) => {
     if (!symbol) return;

@@ -3,7 +3,7 @@ Tests for the Insider Conviction Engine.
 
 These exercise the pure scoring functions in backend/engine/conviction/
 directly, with synthetic deal/candle data - no database connection is
-required, since factors.py, scorer._build_result, and explanations.py take
+required, since factors.py, scorer.build_result, and explanations.py take
 plain data structures as input and never touch the DB themselves (all DB
 access is isolated to market_data.py / persistence.py).
 
@@ -259,7 +259,7 @@ def test_extreme_selling_never_produces_negative_score():
 def test_weight_renormalization_across_available_components():
     deals = [make_deal("BUY", days_ago=5, total_value=2_000_000.0)]
     # No candles at all -> price_confirmation, volume_delivery, historical_success all unavailable.
-    result = scorer._build_result("TESTSYM", deals, [], [], TODAY)
+    result = scorer.build_result("TESTSYM", deals, [], [], TODAY)
     assert result["components_available"] == 3  # insider_activity, transaction_strength, accumulation
     normalized_sum = sum(
         c["normalized_weight_pct"] for c in result["components"].values() if c["available"]
@@ -269,7 +269,7 @@ def test_weight_renormalization_across_available_components():
 
 
 def test_fully_unavailable_result_has_no_overall_score():
-    result = scorer._build_result("TESTSYM", [], [], [], TODAY)
+    result = scorer.build_result("TESTSYM", [], [], [], TODAY)
     assert result["overall_score"] is None
     assert result["components_available"] == 0
 
@@ -322,7 +322,7 @@ def test_price_confirmation_only_uses_elapsed_windows():
 # ---------------------------------------------------------------------------
 def test_model_version_is_stamped_on_every_result():
     assert cfg.MODEL_VERSION == "INSIDER_CONVICTION_V1"
-    result = scorer._build_result("TESTSYM", [make_deal("BUY", days_ago=5)], [], [], TODAY)
+    result = scorer.build_result("TESTSYM", [make_deal("BUY", days_ago=5)], [], [], TODAY)
     assert result["model_version"] == cfg.MODEL_VERSION
 
 
@@ -331,7 +331,7 @@ def test_model_version_is_stamped_on_every_result():
 # ---------------------------------------------------------------------------
 def test_explanation_generation_reflects_available_and_unavailable_components():
     deals = [make_deal("BUY", days_ago=5, client_name=f"Insider {i}", role="Promoter") for i in range(3)]
-    result = scorer._build_result("TESTSYM", deals, [], [], TODAY)
+    result = scorer.build_result("TESTSYM", deals, [], [], TODAY)
     explanation = explanations.generate_explanation(result)
 
     assert explanation["symbol"] == "TESTSYM"
@@ -343,6 +343,6 @@ def test_explanation_generation_reflects_available_and_unavailable_components():
 
 
 def test_explanation_handles_fully_unavailable_result():
-    result = scorer._build_result("TESTSYM", [], [], [], TODAY)
+    result = scorer.build_result("TESTSYM", [], [], [], TODAY)
     explanation = explanations.generate_explanation(result)
     assert "INSUFFICIENT DATA" in explanation["headline"]

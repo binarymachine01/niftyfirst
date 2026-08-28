@@ -9,6 +9,7 @@ import DealsExplorer from './components/DealsExplorer';
 import StockInspector from './components/StockInspector';
 import SystemStatus from './components/SystemStatus';
 import InsiderConviction from './components/InsiderConviction';
+import SmartScreener from './components/SmartScreener';
 import { api } from './services/api';
 
 export default function App() {
@@ -17,6 +18,14 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
+  const [convictionDeepLink, setConvictionDeepLink] = useState(null);
+
+  // Reused by the Smart Screener so a clicked stock opens the EXISTING
+  // Insider Conviction view instead of a duplicate stock-detail page.
+  const handleInspectSymbol = (symbol) => {
+    setConvictionDeepLink(symbol);
+    setActiveTab('conviction');
+  };
 
   // Theme management: 'dark' | 'light'
   const [theme, setTheme] = useState(() => {
@@ -134,16 +143,19 @@ export default function App() {
           </div>
         )}
 
-        {/* Tab 2: Deals Explorer */}
+        {/* Tab 2: Smart Screener */}
+        {activeTab === 'screener' && <SmartScreener onInspectSymbol={handleInspectSymbol} />}
+
+        {/* Tab 3: Deals Explorer */}
         {activeTab === 'deals' && <DealsExplorer />}
 
-        {/* Tab 3: Stock Inspector */}
+        {/* Tab 4: Stock Inspector */}
         {activeTab === 'stocks' && <StockInspector theme={theme} />}
 
-        {/* Tab 4: Insider Conviction Engine */}
-        {activeTab === 'conviction' && <InsiderConviction />}
+        {/* Tab 5: Insider Conviction Engine */}
+        {activeTab === 'conviction' && <InsiderConviction initialSymbol={convictionDeepLink} />}
 
-        {/* Tab 5: System Health & Data Pipelines */}
+        {/* Tab 6: System Health & Data Pipelines */}
         {activeTab === 'system' && (
           <SystemStatus systemStatus={systemStatus} onRefreshStatus={fetchStatus} />
         )}

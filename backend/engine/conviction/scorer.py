@@ -95,7 +95,7 @@ def compute_confidence(
     return {"tier": tier, "points": points, "reasons": reasons}
 
 
-def _build_result(
+def build_result(
     symbol: str,
     current_deals: List[Dict[str, Any]],
     historical_buys: List[Dict[str, Any]],
@@ -106,7 +106,9 @@ def _build_result(
     Pure scoring core: takes already-loaded deals/candles (no DB access
     here) and assembles the transparent result. Shared by both the
     single-symbol and batch ranking paths so batch scoring never re-queries
-    per symbol.
+    per symbol. Public (not prefixed with _) because backend/engine/screener
+    also calls this directly with its own batch-loaded data, reusing the
+    exact Phase 1 scoring logic instead of recomputing conviction itself.
     """
     market_data_available = len(candles) > 0
     current_buys = [d for d in current_deals if d["action"] == "BUY"]
@@ -209,7 +211,7 @@ def score_symbol(symbol: str, as_of_date: Optional[date] = None) -> Dict[str, An
     price_map = market_data.load_price_window([symbol], min_date, as_of_date)
     candles = price_map.get(symbol, [])
 
-    return _build_result(symbol, current_deals, historical_buys, candles, as_of_date)
+    return build_result(symbol, current_deals, historical_buys, candles, as_of_date)
 
 
 def score_active_symbols(as_of_date: Optional[date] = None, limit: int = 50) -> List[Dict[str, Any]]:
@@ -247,7 +249,7 @@ def score_active_symbols(as_of_date: Optional[date] = None, limit: int = 50) -> 
             current_deals = current_grouped.get(symbol, [])
             historical_buys = [d for d in historical_grouped.get(symbol, []) if d["action"] == "BUY"]
             candles = price_map.get(symbol, [])
-            result = _build_result(symbol, current_deals, historical_buys, candles, as_of_date)
+            result = build_result(symbol, current_deals, historical_buys, candles, as_of_date)
             if result["overall_score"] is not None:
                 results.append(result)
         except Exception as e:

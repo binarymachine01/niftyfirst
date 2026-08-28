@@ -102,4 +102,15 @@ export const api = {
     const response = await client.get(`/api/conviction/${symbol}/history`);
     return response.data;
   },
+
+  // Smart Screener
+  runScreener: async (filterPayload) => {
+    const response = await client.post('/api/screener/search', filterPayload);
+    return response.data;
+  },
+
+  getScreenerOptions: async () => {
+    const response = await client.get('/api/screener/options');
+    return response.data;
+  },
 };
