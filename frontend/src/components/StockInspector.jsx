@@ -644,6 +644,7 @@ export default function StockInspector({ theme = 'dark' }) {
                       <th className="py-2.5 px-3.5 text-right">Quantity</th>
                       <th className="py-2.5 px-3.5 text-right">Price</th>
                       <th className="py-2.5 px-3.5 text-right">Value</th>
+                      <th className="py-2.5 px-3.5">Mapping</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.04]">
@@ -657,6 +658,11 @@ export default function StockInspector({ theme = 'dark' }) {
                         <td className="py-2.5 px-3.5 text-right text-slate-800 dark:text-slate-200">{t.quantity ? Number(t.quantity).toLocaleString() : 'N/A'}</td>
                         <td className="py-2.5 px-3.5 text-right text-slate-800 dark:text-slate-200">{t.price ? `₹${Number(t.price).toFixed(2)}` : 'N/A'}</td>
                         <td className="py-2.5 px-3.5 text-right text-cyan-700 dark:text-cyan-300 font-bold">{t.total_value ? formatValue(t.total_value) : 'N/A'}</td>
+                        <td className="py-2.5 px-3.5 font-sans">
+                          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${t.match_status === 'MANUAL_OVERRIDE' ? 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-cyan-500/30' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'}`}>
+                            {t.match_status || 'MATCHED'}
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

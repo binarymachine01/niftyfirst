@@ -11,10 +11,10 @@ from collections import defaultdict
 
 try:
     from backend.database import fetch_all
-    from backend.engine.symbol_matcher import matcher
+    from backend.engine.symbol_matcher import matcher, MatchStatus
 except ImportError:
     from ..database import fetch_all
-    from .symbol_matcher import matcher
+    from .symbol_matcher import matcher, MatchStatus
 
 logger = logging.getLogger(__name__)
 
@@ -156,16 +156,32 @@ class BacktestEngine:
             return self._empty_results(initial_capital)
 
         # 2. Resolve Symbols
+        # CRITICAL: only MATCHED and MANUAL_OVERRIDE mappings are eligible
+        # for backtesting. LOW_CONFIDENCE and UNMATCHED deals are excluded
+        # here explicitly (not merely because matcher.resolve_symbol()
+        # already returns None for them) so the exclusion is visible and
+        # auditable rather than silent - see symbol_mapping_audit below.
         deal_symbols = {}
         unique_symbols = set()
+        status_counts = {MatchStatus.MATCHED: 0, MatchStatus.MANUAL_OVERRIDE: 0, MatchStatus.LOW_CONFIDENCE: 0, MatchStatus.UNMATCHED: 0}
         for d in deals:
-            sym = matcher.resolve_symbol(d["security_name"], d.get("security_slug"))
-            deal_symbols[d["id"]] = sym
-            if sym:
-                unique_symbols.add(sym)
+            match = matcher.resolve_symbol_detailed(d["security_name"], d.get("security_slug"))
+            status = match["match_status"]
+            status_counts[status] = status_counts.get(status, 0) + 1
+            if status in (MatchStatus.MATCHED, MatchStatus.MANUAL_OVERRIDE):
+                deal_symbols[d["id"]] = match["resolved_nse_symbol"]
+                unique_symbols.add(match["resolved_nse_symbol"])
+
+        symbol_mapping_audit = {
+            "total_transactions": len(deals),
+            "matched": status_counts[MatchStatus.MATCHED],
+            "manual_override": status_counts[MatchStatus.MANUAL_OVERRIDE],
+            "excluded_low_confidence": status_counts[MatchStatus.LOW_CONFIDENCE],
+            "excluded_unmatched": status_counts[MatchStatus.UNMATCHED],
+        }
 
         if not unique_symbols:
-            return self._empty_results(initial_capital)
+            return self._empty_results(initial_capital, symbol_mapping_audit)
 
         # 3. Load Price History for matched symbols
         price_history = self.load_price_history(list(unique_symbols))
@@ -268,10 +284,12 @@ class BacktestEngine:
             })
 
         if not trades:
-            return self._empty_results(initial_capital)
+            return self._empty_results(initial_capital, symbol_mapping_audit)
 
         # 5. Build Portfolio Equity Curve & Metrics
-        return self._compute_portfolio_metrics(trades, initial_capital, position_size_pct)
+        results = self._compute_portfolio_metrics(trades, initial_capital, position_size_pct)
+        results["symbol_mapping_audit"] = symbol_mapping_audit
+        return results
 
     def _compute_portfolio_metrics(
         self,
@@ -372,7 +390,7 @@ class BacktestEngine:
             "trades": sorted_trades,
         }
 
-    def _empty_results(self, initial_capital: float) -> Dict[str, Any]:
+    def _empty_results(self, initial_capital: float, symbol_mapping_audit: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Returns blank payload when no trades match criteria."""
         return {
             "summary": {
@@ -394,6 +412,7 @@ class BacktestEngine:
             },
             "equity_curve": [],
             "trades": [],
+            "symbol_mapping_audit": symbol_mapping_audit,
         }
 
 

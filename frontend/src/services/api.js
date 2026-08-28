@@ -118,4 +118,45 @@ export const api = {
     const response = await client.get('/api/screener/options');
     return response.data;
   },
+
+  // Symbol Matcher Governance
+  getUnmatchedSecurities: async (search = '') => {
+    const response = await client.get('/api/symbol-matcher/unmatched', { params: { search: search || undefined } });
+    return response.data;
+  },
+
+  getLowConfidenceSecurities: async (search = '') => {
+    const response = await client.get('/api/symbol-matcher/low-confidence', { params: { search: search || undefined } });
+    return response.data;
+  },
+
+  getAllMappings: async (params = {}) => {
+    const response = await client.get('/api/symbol-matcher/mappings', { params });
+    return response.data;
+  },
+
+  getMatchCandidates: async (securityName) => {
+    const response = await client.get(`/api/symbol-matcher/candidates/${encodeURIComponent(securityName)}`);
+    return response.data;
+  },
+
+  createSymbolMapping: async (payload) => {
+    const response = await client.post('/api/symbol-matcher/mapping', payload);
+    return response.data;
+  },
+
+  updateSymbolMapping: async (mappingId, payload) => {
+    const response = await client.put(`/api/symbol-matcher/mapping/${mappingId}`, payload);
+    return response.data;
+  },
+
+  removeSymbolMapping: async (mappingId, payload = {}) => {
+    const response = await client.delete(`/api/symbol-matcher/mapping/${mappingId}`, { data: payload });
+    return response.data;
+  },
+
+  getMappingHistory: async (mappingId) => {
+    const response = await client.get(`/api/symbol-matcher/history/${mappingId}`);
+    return response.data;
+  },
 };

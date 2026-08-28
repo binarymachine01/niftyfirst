@@ -10,6 +10,7 @@ import StockInspector from './components/StockInspector';
 import SystemStatus from './components/SystemStatus';
 import InsiderConviction from './components/InsiderConviction';
 import SmartScreener from './components/SmartScreener';
+import SymbolMatching from './components/SymbolMatching';
 import { api } from './services/api';
 
 export default function App() {
@@ -114,6 +115,20 @@ export default function App() {
               </div>
             )}
 
+            {/* Symbol Mapping Warning - LOW_CONFIDENCE/UNMATCHED transactions
+                are never silently used in the backtest above; this makes the
+                exclusion visible rather than hidden. */}
+            {results?.symbol_mapping_audit && (results.symbol_mapping_audit.excluded_low_confidence > 0 || results.symbol_mapping_audit.excluded_unmatched > 0) && (
+              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs">
+                <div className="font-bold text-amber-700 dark:text-amber-400 mb-1">
+                  ⚠ SYMBOL MAPPING WARNING — {results.symbol_mapping_audit.excluded_low_confidence + results.symbol_mapping_audit.excluded_unmatched} of {results.symbol_mapping_audit.total_transactions} transactions have unresolved symbols
+                </div>
+                <div className="text-amber-700/80 dark:text-amber-400/80 font-mono text-[11px]">
+                  {results.symbol_mapping_audit.excluded_low_confidence} LOW_CONFIDENCE · {results.symbol_mapping_audit.excluded_unmatched} UNMATCHED — excluded from this backtest (never silently used)
+                </div>
+              </div>
+            )}
+
             {/* Top Metric Cards */}
             {results && <MetricCards summary={results.summary} />}
 
@@ -155,7 +170,10 @@ export default function App() {
         {/* Tab 5: Insider Conviction Engine */}
         {activeTab === 'conviction' && <InsiderConviction initialSymbol={convictionDeepLink} />}
 
-        {/* Tab 6: System Health & Data Pipelines */}
+        {/* Tab 6: Symbol Matching Governance */}
+        {activeTab === 'symbol-matching' && <SymbolMatching />}
+
+        {/* Tab 7: System Health & Data Pipelines */}
         {activeTab === 'system' && (
           <SystemStatus systemStatus={systemStatus} onRefreshStatus={fetchStatus} />
         )}

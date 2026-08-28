@@ -29,6 +29,13 @@ def serialize_deal(d: Dict[str, Any]) -> Dict[str, Any]:
         "quantity": float(d["quantity"]) if d.get("quantity") is not None else None,
         "price": float(d["price"]) if d.get("price") is not None else None,
         "total_value": float(d["total_value"]) if d.get("total_value") is not None else None,
+        # Symbol-matching governance metadata - every deal returned here has
+        # already passed the MATCHED/MANUAL_OVERRIDE gate in market_data.py,
+        # but the method/confidence are still worth showing (e.g. Stock
+        # Intelligence's per-transaction mapping-status display).
+        "match_status": d.get("match_status"),
+        "match_method": d.get("match_method"),
+        "match_confidence": d.get("match_confidence"),
     }
 
 
@@ -101,6 +108,7 @@ def build_result(
     historical_buys: List[Dict[str, Any]],
     candles: List[Dict[str, Any]],
     as_of_date: date,
+    symbol_mapping_audit: Optional[Dict[str, int]] = None,
 ) -> Dict[str, Any]:
     """
     Pure scoring core: takes already-loaded deals/candles (no DB access
@@ -109,6 +117,13 @@ def build_result(
     per symbol. Public (not prefixed with _) because backend/engine/screener
     also calls this directly with its own batch-loaded data, reusing the
     exact Phase 1 scoring logic instead of recomputing conviction itself.
+
+    symbol_mapping_audit (optional) is the tally from market_data.py's
+    loaders of how many scanned deals were MATCHED/MANUAL_OVERRIDE/excluded
+    as LOW_CONFIDENCE/UNMATCHED - current_deals/historical_buys/candles
+    have ALREADY had the exclusion applied by the time they reach this
+    function; this is purely for surfacing that fact in data_quality,
+    never for changing what's scored.
     """
     market_data_available = len(candles) > 0
     current_buys = [d for d in current_deals if d["action"] == "BUY"]
@@ -184,6 +199,7 @@ def build_result(
             "market_data_available": market_data_available,
             "current_window_days": cfg.CURRENT_LOOKBACK_DAYS,
             "historical_window_days": cfg.HISTORICAL_LOOKBACK_DAYS,
+            "symbol_mapping_audit": symbol_mapping_audit,
         },
     }
 
@@ -201,7 +217,8 @@ def score_symbol(symbol: str, as_of_date: Optional[date] = None) -> Dict[str, An
     # HISTORICAL_LOOKBACK_DAYS is always >= CURRENT_LOOKBACK_DAYS, so one
     # query at the larger window covers both - current_deals is derived by
     # filtering client-side rather than issuing a second query.
-    historical_deals = market_data.load_symbol_deals(symbol, lookback_days=cfg.HISTORICAL_LOOKBACK_DAYS, as_of_date=as_of_date)
+    audit = market_data.new_mapping_audit()
+    historical_deals = market_data.load_symbol_deals(symbol, lookback_days=cfg.HISTORICAL_LOOKBACK_DAYS, as_of_date=as_of_date, audit=audit)
     current_start = as_of_date - timedelta(days=cfg.CURRENT_LOOKBACK_DAYS)
     current_deals = [d for d in historical_deals if d["trade_date"] >= current_start]
     historical_buys = [d for d in historical_deals if d["action"] == "BUY"]
@@ -211,7 +228,7 @@ def score_symbol(symbol: str, as_of_date: Optional[date] = None) -> Dict[str, An
     price_map = market_data.load_price_window([symbol], min_date, as_of_date)
     candles = price_map.get(symbol, [])
 
-    return build_result(symbol, current_deals, historical_buys, candles, as_of_date)
+    return build_result(symbol, current_deals, historical_buys, candles, as_of_date, symbol_mapping_audit=audit)
 
 
 def score_active_symbols(as_of_date: Optional[date] = None, limit: int = 50) -> List[Dict[str, Any]]:
@@ -227,7 +244,11 @@ def score_active_symbols(as_of_date: Optional[date] = None, limit: int = 50) -> 
 
     # One query at the wider historical window; the "current" grouping is
     # derived by filtering client-side (same optimization as score_symbol).
-    historical_grouped = market_data.load_active_symbols(lookback_days=cfg.HISTORICAL_LOOKBACK_DAYS, as_of_date=as_of_date)
+    # audit here is batch-wide (across the whole active-symbol universe
+    # query), not per-symbol - attached identically to every result below
+    # as the overall symbol-mapping health for this ranking run.
+    audit = market_data.new_mapping_audit()
+    historical_grouped = market_data.load_active_symbols(lookback_days=cfg.HISTORICAL_LOOKBACK_DAYS, as_of_date=as_of_date, audit=audit)
     current_start = as_of_date - timedelta(days=cfg.CURRENT_LOOKBACK_DAYS)
     current_grouped = {
         symbol: [d for d in deals if d["trade_date"] >= current_start]
@@ -249,7 +270,7 @@ def score_active_symbols(as_of_date: Optional[date] = None, limit: int = 50) -> 
             current_deals = current_grouped.get(symbol, [])
             historical_buys = [d for d in historical_grouped.get(symbol, []) if d["action"] == "BUY"]
             candles = price_map.get(symbol, [])
-            result = build_result(symbol, current_deals, historical_buys, candles, as_of_date)
+            result = build_result(symbol, current_deals, historical_buys, candles, as_of_date, symbol_mapping_audit=audit)
             if result["overall_score"] is not None:
                 results.append(result)
         except Exception as e:

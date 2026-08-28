@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from backend.config import CORS_ORIGINS, API_HOST, API_PORT
-from backend.routers import backtest, deals, stocks, system, conviction, screener
+from backend.routers import backtest, deals, stocks, system, conviction, screener, symbol_matcher as symbol_matcher_router
 from backend.engine.symbol_matcher import matcher
 from backend.engine.conviction import persistence as conviction_persistence
 
@@ -43,6 +43,7 @@ app.include_router(stocks.router)
 app.include_router(system.router)
 app.include_router(conviction.router)
 app.include_router(screener.router)
+app.include_router(symbol_matcher_router.router)
 
 
 @app.on_event("startup")

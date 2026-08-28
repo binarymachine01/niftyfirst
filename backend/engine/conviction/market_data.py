@@ -16,10 +16,10 @@ from collections import defaultdict
 
 try:
     from backend.database import fetch_all
-    from backend.engine.symbol_matcher import matcher
+    from backend.engine.symbol_matcher import matcher, MatchStatus
 except ImportError:
     from ...database import fetch_all
-    from ..symbol_matcher import matcher
+    from ..symbol_matcher import matcher, MatchStatus
 
 from . import configuration as cfg
 
@@ -48,6 +48,25 @@ def to_date(val: Any) -> Optional[date]:
         return None
 
 
+def new_mapping_audit() -> Dict[str, int]:
+    """Fresh, zeroed symbol-mapping audit counter (see load_symbol_deals/load_active_symbols)."""
+    return {"total_transactions": 0, "matched": 0, "manual_override": 0, "excluded_low_confidence": 0, "excluded_unmatched": 0}
+
+
+def _tally(audit: Optional[Dict[str, int]], status: str) -> None:
+    if audit is None:
+        return
+    audit["total_transactions"] += 1
+    if status == MatchStatus.MATCHED:
+        audit["matched"] += 1
+    elif status == MatchStatus.MANUAL_OVERRIDE:
+        audit["manual_override"] += 1
+    elif status == MatchStatus.LOW_CONFIDENCE:
+        audit["excluded_low_confidence"] += 1
+    elif status == MatchStatus.UNMATCHED:
+        audit["excluded_unmatched"] += 1
+
+
 def classify_role(person_category: Optional[str]) -> str:
     """
     Groups the raw StockEdge person_category string into one of the four
@@ -74,6 +93,7 @@ def load_symbol_deals(
     symbol: str,
     lookback_days: int = cfg.CURRENT_LOOKBACK_DAYS,
     as_of_date: Optional[date] = None,
+    audit: Optional[Dict[str, int]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Loads conviction-relevant deals (BUY/SELL only, Pledge/Unpledge excluded)
@@ -81,6 +101,13 @@ def load_symbol_deals(
     as_of_date (defaults to today). Joins back to the raw deal tables (same
     pattern as backtester.py:load_deals) to recover security_slug and, for
     Insider Trading / SAST rows, person_category.
+
+    CRITICAL: only deals resolving to MATCHED or MANUAL_OVERRIDE are ever
+    returned - LOW_CONFIDENCE and UNMATCHED deals (across the whole scanned
+    window, not just this symbol) are excluded and, if an `audit` dict is
+    passed in, tallied there so the exclusion is visible rather than silent.
+    Each returned deal is annotated with match_status/match_method/
+    match_confidence for downstream display (e.g. Stock Intelligence).
     """
     as_of_date = as_of_date or date.today()
     start_date = as_of_date - timedelta(days=lookback_days)
@@ -112,10 +139,14 @@ def load_symbol_deals(
     matcher.initialize()
     matched = []
     for r in rows:
-        resolved = matcher.resolve_symbol(r["security_name"], r.get("security_slug"))
-        if resolved == symbol:
+        match = matcher.resolve_symbol_detailed(r["security_name"], r.get("security_slug"))
+        _tally(audit, match["match_status"])
+        if match["match_status"] in (MatchStatus.MATCHED, MatchStatus.MANUAL_OVERRIDE) and match["resolved_nse_symbol"] == symbol:
             r["trade_date"] = to_date(r["trade_date"])
             r["role"] = classify_role(r.get("person_category"))
+            r["match_status"] = match["match_status"]
+            r["match_method"] = match["match_method"]
+            r["match_confidence"] = match["match_confidence"]
             matched.append(r)
     return matched
 
@@ -123,6 +154,7 @@ def load_symbol_deals(
 def load_active_symbols(
     lookback_days: int = cfg.CURRENT_LOOKBACK_DAYS,
     as_of_date: Optional[date] = None,
+    audit: Optional[Dict[str, int]] = None,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
     Batch equivalent of load_symbol_deals: loads all BUY/SELL conviction
@@ -130,6 +162,9 @@ def load_active_symbols(
     cached), and groups by resolved symbol. Used by the ranking endpoint so
     scoring many stocks costs one deals query + one price query total,
     instead of one pair per symbol (avoids N+1).
+
+    CRITICAL: only MATCHED/MANUAL_OVERRIDE deals are grouped/returned; see
+    load_symbol_deals for the same exclusion + audit-tallying rationale.
     """
     as_of_date = as_of_date or date.today()
     start_date = as_of_date - timedelta(days=lookback_days)
@@ -161,12 +196,16 @@ def load_active_symbols(
     matcher.initialize()
     grouped: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for r in rows:
-        resolved = matcher.resolve_symbol(r["security_name"], r.get("security_slug"))
-        if not resolved:
+        match = matcher.resolve_symbol_detailed(r["security_name"], r.get("security_slug"))
+        _tally(audit, match["match_status"])
+        if match["match_status"] not in (MatchStatus.MATCHED, MatchStatus.MANUAL_OVERRIDE):
             continue
         r["trade_date"] = to_date(r["trade_date"])
         r["role"] = classify_role(r.get("person_category"))
-        grouped[resolved].append(r)
+        r["match_status"] = match["match_status"]
+        r["match_method"] = match["match_method"]
+        r["match_confidence"] = match["match_confidence"]
+        grouped[match["resolved_nse_symbol"]].append(r)
     return grouped
 
 

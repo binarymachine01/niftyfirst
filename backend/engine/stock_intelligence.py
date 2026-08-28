@@ -172,8 +172,9 @@ def get_stock_intelligence(symbol: str, as_of_date: Optional[date] = None) -> Op
     if not resolved_symbol:
         return None
 
+    mapping_audit = conviction_market_data.new_mapping_audit()
     historical_deals = conviction_market_data.load_symbol_deals(
-        resolved_symbol, lookback_days=conviction_cfg.HISTORICAL_LOOKBACK_DAYS, as_of_date=as_of_date
+        resolved_symbol, lookback_days=conviction_cfg.HISTORICAL_LOOKBACK_DAYS, as_of_date=as_of_date, audit=mapping_audit
     )
     insider_window_start = as_of_date - timedelta(days=conviction_cfg.CURRENT_LOOKBACK_DAYS)
     insider_window_deals = [d for d in historical_deals if d["trade_date"] >= insider_window_start]
@@ -191,7 +192,7 @@ def get_stock_intelligence(symbol: str, as_of_date: Optional[date] = None) -> Op
     price_map = conviction_market_data.load_price_window([resolved_symbol], min_date, as_of_date)
     candles = price_map.get(resolved_symbol, [])
 
-    candidate = build_candidate(resolved_symbol, historical_deals, insider_window_deals, candles, as_of_date)
+    candidate = build_candidate(resolved_symbol, historical_deals, insider_window_deals, candles, as_of_date, symbol_mapping_audit=mapping_audit)
     win_rate = screener_ranking.historical_win_rate(candidate)
     signal = screener_ranking.classify_signal_strength(candidate)
 

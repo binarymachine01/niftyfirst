@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, BarChart3, Layers, Search, Sparkles, Zap, ShieldCheck, Sun, Moon, Gauge, SlidersHorizontal } from 'lucide-react';
+import { Activity, BarChart3, Layers, Search, Sparkles, Zap, ShieldCheck, ShieldAlert, Sun, Moon, Gauge, SlidersHorizontal } from 'lucide-react';
 
 export default function Navbar({ activeTab, setActiveTab, systemStatus, theme, toggleTheme }) {
   const tabs = [
@@ -8,6 +8,7 @@ export default function Navbar({ activeTab, setActiveTab, systemStatus, theme, t
     { id: 'deals', label: 'Deals Explorer', icon: Layers, badge: 'Live Feeds' },
     { id: 'stocks', label: 'Stock Inspector', icon: Search, badge: 'OHLC' },
     { id: 'conviction', label: 'Insider Conviction', icon: Gauge, badge: 'Scoring' },
+    { id: 'symbol-matching', label: 'Symbol Matching', icon: ShieldAlert, badge: 'Governance' },
     { id: 'system', label: 'System Health', icon: Activity, badge: 'Pipelines' },
   ];
 

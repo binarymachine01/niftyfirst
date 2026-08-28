@@ -91,6 +91,7 @@ def build_candidate(
     insider_window_deals: List[Dict[str, Any]],
     candles: List[Dict[str, Any]],
     as_of_date: date,
+    symbol_mapping_audit: Optional[Dict[str, int]] = None,
 ) -> Dict[str, Any]:
     """One symbol's full computed picture: Conviction (reused), insider-window metrics, technicals."""
     conviction_current_start = as_of_date - timedelta(days=conviction_cfg.CURRENT_LOOKBACK_DAYS)
@@ -98,7 +99,8 @@ def build_candidate(
     conviction_historical_buys = [d for d in historical_deals if d["action"] == "BUY"]
 
     conviction_result = conviction_scorer.build_result(
-        symbol, conviction_current_deals, conviction_historical_buys, candles, as_of_date
+        symbol, conviction_current_deals, conviction_historical_buys, candles, as_of_date,
+        symbol_mapping_audit=symbol_mapping_audit,
     )
 
     return {
@@ -165,7 +167,8 @@ def run_screener(req: flt.ScreenerRequest, as_of_date: Optional[date] = None) ->
     as_of_date = as_of_date or date.today()
 
     widest_lookback = cfg.universe_lookback_days(req.insider.lookback_days)
-    grouped_deals = conviction_market_data.load_active_symbols(lookback_days=widest_lookback, as_of_date=as_of_date)
+    mapping_audit = conviction_market_data.new_mapping_audit()
+    grouped_deals = conviction_market_data.load_active_symbols(lookback_days=widest_lookback, as_of_date=as_of_date, audit=mapping_audit)
 
     grouped_deals = {
         symbol: flt.filter_deals_by_category(deals, req.deals.categories)
@@ -183,6 +186,7 @@ def run_screener(req: flt.ScreenerRequest, as_of_date: Optional[date] = None) ->
         return {
             "results": [], "total_count": 0, "page": req.page, "page_size": req.page_size,
             "total_pages": 1, "universe_size": 0, "as_of_date": str(as_of_date),
+            "top_exclusion_reasons": [], "symbol_mapping_audit": mapping_audit,
         }
 
     min_price_date = as_of_date - timedelta(days=cfg.PRICE_HISTORY_CALENDAR_DAYS)
@@ -194,7 +198,7 @@ def run_screener(req: flt.ScreenerRequest, as_of_date: Optional[date] = None) ->
             historical_deals = grouped_deals[symbol]
             insider_window_deals = [d for d in historical_deals if d["trade_date"] >= insider_window_start]
             candles = price_map.get(symbol, [])
-            candidates.append(build_candidate(symbol, historical_deals, insider_window_deals, candles, as_of_date))
+            candidates.append(build_candidate(symbol, historical_deals, insider_window_deals, candles, as_of_date, symbol_mapping_audit=mapping_audit))
         except Exception as e:
             logger.warning(f"Screener failed to build candidate for {symbol}: {e}")
 
@@ -225,4 +229,5 @@ def run_screener(req: flt.ScreenerRequest, as_of_date: Optional[date] = None) ->
         "universe_size": len(universe_symbols),
         "as_of_date": str(as_of_date),
         "top_exclusion_reasons": [{"reason": r, "excluded_count": c} for r, c in top_exclusion_reasons],
+        "symbol_mapping_audit": mapping_audit,
     }
