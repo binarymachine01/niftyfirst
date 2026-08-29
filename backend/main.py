@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from backend.config import CORS_ORIGINS, API_HOST, API_PORT
-from backend.routers import backtest, deals, stocks, system, conviction, screener, symbol_matcher as symbol_matcher_router
+from backend.routers import backtest, deals, stocks, system, conviction, screener, symbol_matcher as symbol_matcher_router, alerts
 from backend.engine.symbol_matcher import matcher
 from backend.engine.conviction import persistence as conviction_persistence
 
@@ -44,17 +44,22 @@ app.include_router(system.router)
 app.include_router(conviction.router)
 app.include_router(screener.router)
 app.include_router(symbol_matcher_router.router)
+app.include_router(alerts.router)
 
 
 @app.on_event("startup")
 def startup_event():
-    """Initializes symbol matcher and Insider Conviction Engine schema on server startup."""
+    """Initializes symbol matcher, conviction engine, and alerts schema on server startup."""
     try:
         matcher.initialize()
     except Exception:
         pass
     try:
         conviction_persistence.ensure_schema()
+    except Exception:
+        pass
+    try:
+        alerts.ensure_schema()
     except Exception:
         pass
 

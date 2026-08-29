@@ -11,6 +11,7 @@ import SystemStatus from './components/SystemStatus';
 import InsiderConviction from './components/InsiderConviction';
 import SmartScreener from './components/SmartScreener';
 import SymbolMatching from './components/SymbolMatching';
+import AlertsPanel from './components/AlertsPanel';
 import { api } from './services/api';
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
   const [convictionDeepLink, setConvictionDeepLink] = useState(null);
+  const [alertsCount, setAlertsCount] = useState(0);
 
   // Reused by the Smart Screener so a clicked stock opens the EXISTING
   // Insider Conviction view instead of a duplicate stock-detail page.
@@ -71,6 +73,20 @@ export default function App() {
     }
   };
 
+  const fetchAlertsBadge = async () => {
+    try {
+      const res = await api.getAlertMatches();
+      setAlertsCount(res?.total_new_alerts || 0);
+    } catch (err) {
+      console.error('Failed to load alert matches:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchStatus();
+    fetchAlertsBadge();
+  }, []);
+
   const handleRunBacktest = async () => {
     setLoading(true);
     setError(null);
@@ -82,31 +98,27 @@ export default function App() {
         setError('Backtest completed with error');
       }
     } catch (err) {
-      console.error(err);
-      setError(err.response?.data?.detail || 'Failed to execute backtest simulation.');
+      setError(err.response?.data?.detail || err.message || 'Failed to execute backtest');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchStatus();
-    // Run initial backtest on load
-    handleRunBacktest();
-  }, []);
-
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#0a0e17] text-slate-900 dark:text-slate-100 transition-colors duration-300">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#080d1a] text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
+      {/* Header & Navbar */}
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         systemStatus={systemStatus}
+        alertsCount={alertsCount}
         theme={theme}
-        toggleTheme={toggleTheme}
+        onToggleTheme={toggleTheme}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Tab 1: Backtesting Lab */}
+      {/* Main Container */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
+        {/* Tab 1: Quantitative Backtest Lab */}
         {activeTab === 'backtest' && (
           <div className="space-y-6">
             {error && (
@@ -115,9 +127,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Symbol Mapping Warning - LOW_CONFIDENCE/UNMATCHED transactions
-                are never silently used in the backtest above; this makes the
-                exclusion visible rather than hidden. */}
+            {/* Symbol Mapping Warning */}
             {results?.symbol_mapping_audit && (results.symbol_mapping_audit.excluded_low_confidence > 0 || results.symbol_mapping_audit.excluded_unmatched > 0) && (
               <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs">
                 <div className="font-bold text-amber-700 dark:text-amber-400 mb-1">
@@ -134,7 +144,6 @@ export default function App() {
 
             {/* Backtest Strategy Controls & Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Left Column: Config Form (4 cols) */}
               <div className="lg:col-span-4">
                 <BacktestConfigForm
                   config={config}
@@ -144,7 +153,6 @@ export default function App() {
                 />
               </div>
 
-              {/* Right Column: Visual Charts (8 cols) */}
               <div className="lg:col-span-8 space-y-6">
                 <EquityCurveChart data={results?.equity_curve} theme={theme} />
                 {results?.equity_curve && results.equity_curve.length > 0 && (
@@ -164,16 +172,19 @@ export default function App() {
         {/* Tab 3: Deals Explorer */}
         {activeTab === 'deals' && <DealsExplorer />}
 
-        {/* Tab 4: Stock Inspector */}
+        {/* Tab 4: Stock Inspector / Intelligence */}
         {activeTab === 'stocks' && <StockInspector theme={theme} />}
 
         {/* Tab 5: Insider Conviction Engine */}
         {activeTab === 'conviction' && <InsiderConviction initialSymbol={convictionDeepLink} />}
 
-        {/* Tab 6: Symbol Matching Governance */}
+        {/* Tab 6: Alerts & Saved Filters */}
+        {activeTab === 'alerts' && <AlertsPanel onMatchesRefreshed={setAlertsCount} />}
+
+        {/* Tab 7: Symbol Matching Governance */}
         {activeTab === 'symbol-matching' && <SymbolMatching />}
 
-        {/* Tab 7: System Health & Data Pipelines */}
+        {/* Tab 8: System Health & Data Pipelines */}
         {activeTab === 'system' && (
           <SystemStatus systemStatus={systemStatus} onRefreshStatus={fetchStatus} />
         )}

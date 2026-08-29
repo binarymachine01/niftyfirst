@@ -1,13 +1,15 @@
 import React from 'react';
-import { Activity, BarChart3, Layers, Search, Sparkles, Zap, ShieldCheck, ShieldAlert, Sun, Moon, Gauge, SlidersHorizontal } from 'lucide-react';
+import { Activity, BarChart3, Layers, Search, Sparkles, Zap, ShieldCheck, ShieldAlert, Sun, Moon, Gauge, SlidersHorizontal, Bell } from 'lucide-react';
 
-export default function Navbar({ activeTab, setActiveTab, systemStatus, theme, toggleTheme }) {
+export default function Navbar({ activeTab, setActiveTab, systemStatus, theme, onToggleTheme, toggleTheme, alertsCount = 0 }) {
+  const handleToggle = onToggleTheme || toggleTheme;
   const tabs = [
     { id: 'backtest', label: 'Backtesting Lab', icon: BarChart3, badge: 'Strategy' },
     { id: 'screener', label: 'Smart Screener', icon: SlidersHorizontal, badge: 'Discover' },
     { id: 'deals', label: 'Deals Explorer', icon: Layers, badge: 'Live Feeds' },
-    { id: 'stocks', label: 'Stock Inspector', icon: Search, badge: 'OHLC' },
+    { id: 'stocks', label: 'Stock Intelligence', icon: Search, badge: 'Technicals' },
     { id: 'conviction', label: 'Insider Conviction', icon: Gauge, badge: 'Scoring' },
+    { id: 'alerts', label: 'Alerts', icon: Bell, badge: 'Watchlists' },
     { id: 'symbol-matching', label: 'Symbol Matching', icon: ShieldAlert, badge: 'Governance' },
     { id: 'system', label: 'System Health', icon: Activity, badge: 'Pipelines' },
   ];
@@ -59,7 +61,12 @@ export default function Navbar({ activeTab, setActiveTab, systemStatus, theme, t
               >
                 <Icon className={`w-4 h-4 ${isActive ? 'text-cyan-600 dark:text-cyan-400' : 'text-slate-500 dark:text-slate-400'}`} />
                 <span>{tab.label}</span>
-                {isActive && (
+                {tab.id === 'alerts' && alertsCount > 0 && (
+                  <span className="flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-black">
+                    {alertsCount > 99 ? '99+' : alertsCount}
+                  </span>
+                )}
+                {isActive && tab.id !== 'alerts' && (
                   <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 dark:bg-cyan-400 animate-pulse shadow-sm shadow-cyan-400" />
                 )}
               </button>
@@ -82,7 +89,7 @@ export default function Navbar({ activeTab, setActiveTab, systemStatus, theme, t
 
           {/* Theme Toggle Button */}
           <button
-            onClick={toggleTheme}
+            onClick={handleToggle}
             aria-label="Toggle theme"
             className="p-2.5 rounded-xl border border-slate-200 dark:border-white/[0.08] bg-slate-100 hover:bg-slate-200 dark:bg-slate-900/80 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-cyan-600 dark:hover:text-cyan-400 transition-all duration-200 shadow-sm flex items-center justify-center group"
             title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} mode`}

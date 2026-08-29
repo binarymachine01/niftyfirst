@@ -9,10 +9,12 @@ try:
     from backend.database import fetch_all
     from backend.engine.symbol_matcher import matcher
     from backend.engine.stock_intelligence import get_stock_intelligence
+    from backend.engine.reaction import annotate_price_reactions
 except ImportError:
     from ..database import fetch_all
     from ..engine.symbol_matcher import matcher
     from ..engine.stock_intelligence import get_stock_intelligence
+    from ..engine.reaction import annotate_price_reactions
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +105,8 @@ def get_stock_deals(symbol: str):
     rows = fetch_all(query, (symbol.upper(), f"%{symbol}%", f"{symbol}%"))
     for r in rows:
         r["trade_date"] = str(r["trade_date"])
+
+    annotate_price_reactions(rows, symbol_override=symbol.upper())
 
     return {"symbol": symbol.upper(), "deals": rows}
 

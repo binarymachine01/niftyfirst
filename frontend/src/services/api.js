@@ -37,6 +37,11 @@ export const api = {
     return response.data;
   },
 
+  getClientDeals: async (clientName) => {
+    const response = await client.get(`/api/deals/clients/${encodeURIComponent(clientName)}`);
+    return response.data;
+  },
+
   // Stocks
   getStocksList: async (search = '') => {
     const response = await client.get('/api/stocks/list', { params: { search } });
@@ -178,6 +183,32 @@ export const api = {
 
   validateSymbolMappings: async () => {
     const response = await client.get('/api/symbol-matcher/validate');
+    return response.data;
+  },
+
+  // Alerts & Saved Filters
+  getSavedFilters: async () => {
+    const response = await client.get('/api/alerts/filters');
+    return response.data;
+  },
+
+  createSavedFilter: async (filter) => {
+    const response = await client.post('/api/alerts/filters', filter);
+    return response.data;
+  },
+
+  deleteSavedFilter: async (filterId) => {
+    const response = await client.delete(`/api/alerts/filters/${filterId}`);
+    return response.data;
+  },
+
+  acknowledgeFilter: async (filterId) => {
+    const response = await client.post(`/api/alerts/filters/${filterId}/acknowledge`);
+    return response.data;
+  },
+
+  getAlertMatches: async () => {
+    const response = await client.get('/api/alerts/matches');
     return response.data;
   },
 };
