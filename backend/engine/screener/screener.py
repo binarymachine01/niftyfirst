@@ -171,7 +171,7 @@ def run_screener(req: flt.ScreenerRequest, as_of_date: Optional[date] = None) ->
     grouped_deals = conviction_market_data.load_active_symbols(lookback_days=widest_lookback, as_of_date=as_of_date, audit=mapping_audit)
 
     grouped_deals = {
-        symbol: flt.filter_deals_by_category(deals, req.deals.categories)
+        symbol: flt.filter_deals_by_exchange(flt.filter_deals_by_category(deals, req.deals.categories), req.deals.exchanges)
         for symbol, deals in grouped_deals.items()
     }
     grouped_deals = {symbol: deals for symbol, deals in grouped_deals.items() if deals}

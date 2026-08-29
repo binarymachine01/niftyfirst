@@ -44,6 +44,15 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# The exchange nse_equity_eod's price/candle data belongs to - NOT the same
+# concept as scripts.common.ENABLED_EXCHANGES (which governs which
+# exchanges' DEALS are extracted). This matcher's entire candidate/target
+# universe (_nse_symbols) is loaded from nse_equity_eod, which today
+# contains NSE data exclusively by construction of the NSE EOD pipeline
+# (scripts/nse_eod/) - there is no per-exchange EOD dataset to choose
+# between yet, so every resolved symbol is, by construction, an NSE symbol.
+RESOLVED_EXCHANGE = "NSE"
+
 # ---------------------------------------------------------------------------
 # Governance constants (centralized - nothing below is duplicated elsewhere)
 # ---------------------------------------------------------------------------
@@ -174,6 +183,10 @@ def _result_shape(
         "original_security_name": original_security_name,
         "normalized_security_name": normalized_security_name,
         "resolved_nse_symbol": resolved_nse_symbol,
+        # Explicit, checkable field (rather than an implicit assumption)
+        # that this resolution's target exchange is NSE - None when there
+        # is no resolved symbol at all (nothing to attribute an exchange to).
+        "resolved_exchange": RESOLVED_EXCHANGE if resolved_nse_symbol else None,
         "match_method": match_method,
         "match_confidence": match_confidence,
         "match_status": match_status,
@@ -184,6 +197,20 @@ def _result_shape(
         "updated_at": None,
         "updated_by": None,
     }
+
+
+def is_symbol_currently_valid(resolved_nse_symbol: Optional[str], valid_symbols: Set[str]) -> bool:
+    """
+    Pure re-validation check (no DB/cache access): a resolved symbol is only
+    ever trustworthy if it still exists in the CURRENT NSE reference
+    universe - being labeled "NSE" is not enough on its own (a persisted
+    mapping could predate a matcher fix, or the symbol could have been
+    delisted). A missing resolved_nse_symbol (nothing to validate, e.g. an
+    UNMATCHED result) is treated as valid - there is no false claim to check.
+    """
+    if not resolved_nse_symbol:
+        return True
+    return resolved_nse_symbol.strip().upper() in valid_symbols
 
 
 class SymbolMatcher:
@@ -415,6 +442,22 @@ class SymbolMatcher:
     def invalidate_cached_result(self, normalized_security_name: str) -> None:
         """Drops a cached result (e.g. after a manual override is removed) so the next lookup re-resolves fresh."""
         self._detailed_cache.pop(normalized_security_name, None)
+
+    def get_valid_nse_symbols(self) -> Set[str]:
+        """Read-only copy of the current NSE reference universe, for hard-validation checks (never the live set itself)."""
+        if not self._initialized:
+            self.initialize()
+        return set(self._nse_symbols)
+
+    def clear_cache(self) -> None:
+        """
+        Drops the ENTIRE in-memory resolution cache (used by a full
+        re-match run, after stale automatic mappings have been cleared in
+        the database). Safe for manual overrides too: the next lookup just
+        re-fetches them from security_mappings via get_mapping() and
+        re-caches the same value - nothing is lost.
+        """
+        self._detailed_cache.clear()
 
 
 # Global singleton instance

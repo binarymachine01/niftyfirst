@@ -32,6 +32,11 @@ export const api = {
     return response.data;
   },
 
+  getDealExchanges: async () => {
+    const response = await client.get('/api/deals/exchanges');
+    return response.data;
+  },
+
   // Stocks
   getStocksList: async (search = '') => {
     const response = await client.get('/api/stocks/list', { params: { search } });
@@ -64,10 +69,11 @@ export const api = {
     return response.data;
   },
 
-  runScript: async (scriptKey, args = []) => {
+  runScript: async (scriptKey, args = [], exchanges = undefined) => {
     const response = await client.post('/api/system/run-script', {
       script_key: scriptKey,
       args,
+      exchanges,
     });
     return response.data;
   },
@@ -84,6 +90,11 @@ export const api = {
 
   stopTask: async (taskId) => {
     const response = await client.post(`/api/system/tasks/${taskId}/stop`);
+    return response.data;
+  },
+
+  clearInsiderData: async (confirmation) => {
+    const response = await client.post('/api/system/insider-data/clear', { confirmation });
     return response.data;
   },
 
@@ -157,6 +168,16 @@ export const api = {
 
   getMappingHistory: async (mappingId) => {
     const response = await client.get(`/api/symbol-matcher/history/${mappingId}`);
+    return response.data;
+  },
+
+  rematchSymbols: async (confirmation) => {
+    const response = await client.post('/api/symbol-matcher/rematch', { confirmation });
+    return response.data;
+  },
+
+  validateSymbolMappings: async () => {
+    const response = await client.get('/api/symbol-matcher/validate');
     return response.data;
   },
 };

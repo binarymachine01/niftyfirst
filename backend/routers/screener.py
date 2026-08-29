@@ -14,6 +14,8 @@ except ImportError:
     from ..engine.screener.screener import run_screener
     from ..engine.screener import configuration as screener_cfg
 
+from scripts.common import ENABLED_EXCHANGES
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/screener", tags=["Smart Screener"])
@@ -42,6 +44,7 @@ def get_options():
         "default_insider_lookback_days": screener_cfg.DEFAULT_INSIDER_LOOKBACK_DAYS,
         "sort_fields": screener_cfg.SORT_FIELDS,
         "deal_categories": DEAL_CATEGORIES,
+        "enabled_exchanges": ENABLED_EXCHANGES,
         "default_page_size": screener_cfg.DEFAULT_PAGE_SIZE,
         "max_page_size": screener_cfg.MAX_PAGE_SIZE,
     }

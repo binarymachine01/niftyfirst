@@ -51,7 +51,11 @@ const DEFAULT_FILTERS = {
     breakout: null,
   },
   delivery: { delivery_pct_min: null, delivery_pct_max: null, delivery_increase_min: null },
-  deals: { categories: [...DEAL_CATEGORIES] },
+  // exchanges starts empty ("no constraint" - same as omitting the field,
+  // which falls back to the backend's ENABLED_EXCHANGES default). Seeded to
+  // the actual enabled list once fetched, so the checkboxes reflect reality
+  // instead of hardcoding a duplicate exchange list here.
+  deals: { categories: [...DEAL_CATEGORIES], exchanges: [] },
   conviction: { min_score: null, max_score: null },
   sort: { field: 'conviction_score', direction: 'desc' },
   page: 1,
@@ -117,6 +121,7 @@ export default function SmartScreener({ onInspectSymbol }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [expandedRow, setExpandedRow] = useState(null);
+  const [availableExchanges, setAvailableExchanges] = useState([]);
 
   const update = (group, key, value) => {
     setFilters((prev) => ({ ...prev, [group]: { ...prev[group], [key]: value } }));
@@ -142,14 +147,27 @@ export default function SmartScreener({ onInspectSymbol }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    api.getScreenerOptions()
+      .then((res) => {
+        const enabled = res.enabled_exchanges || [];
+        setAvailableExchanges(enabled);
+        // Seeds the exchange checkboxes to "all enabled" by default, matching
+        // the backend's own ENABLED_EXCHANGES default for an unset filter.
+        setFilters((prev) => ({ ...prev, deals: { ...prev.deals, exchanges: enabled } }));
+      })
+      .catch((err) => console.error('Failed to fetch screener options:', err));
+  }, []);
+
   const handleApply = () => {
     runSearch({ ...filters, page: 1 });
     setFilters((prev) => ({ ...prev, page: 1 }));
   };
 
   const handleReset = () => {
-    setFilters(DEFAULT_FILTERS);
-    runSearch(DEFAULT_FILTERS);
+    const reset = { ...DEFAULT_FILTERS, deals: { ...DEFAULT_FILTERS.deals, exchanges: availableExchanges } };
+    setFilters(reset);
+    runSearch(reset);
   };
 
   const handleSort = (field) => {
@@ -169,6 +187,12 @@ export default function SmartScreener({ onInspectSymbol }) {
     const current = filters.deals.categories;
     const next = current.includes(cat) ? current.filter((c) => c !== cat) : [...current, cat];
     update('deals', 'categories', next);
+  };
+
+  const toggleExchange = (ex) => {
+    const current = filters.deals.exchanges;
+    const next = current.includes(ex) ? current.filter((e) => e !== ex) : [...current, ex];
+    update('deals', 'exchanges', next);
   };
 
   const sections = [
@@ -301,6 +325,20 @@ export default function SmartScreener({ onInspectSymbol }) {
                 ))}
               </div>
             </div>
+            {availableExchanges.length > 0 && (
+              <div>
+                {/* Options reflect scripts.common:ENABLED_EXCHANGES (NSE only today) */}
+                <div className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">Exchanges</div>
+                <div className="flex items-center gap-4 flex-wrap">
+                  {availableExchanges.map((ex) => (
+                    <label key={ex} className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      <input type="checkbox" checked={filters.deals.exchanges.includes(ex)} onChange={() => toggleExchange(ex)} className="w-3.5 h-3.5" />
+                      {ex}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
               <MinMaxField label="Conviction Score" minVal={filters.conviction.min_score} maxVal={filters.conviction.max_score} onMin={(v) => update('conviction', 'min_score', v)} onMax={(v) => update('conviction', 'max_score', v)} />
             </div>

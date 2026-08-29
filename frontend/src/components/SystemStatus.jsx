@@ -38,6 +38,23 @@ export default function SystemStatus({ systemStatus, onRefreshStatus }) {
   const [nseEndDate, setNseEndDate] = useState('2026-08-20');
   const [nseForce, setNseForce] = useState(false);
 
+  // Insider & Deal Data Pipeline - Exchange Configuration. The selectable
+  // list (only ENABLED exchanges - never all SUPPORTED_EXCHANGES) and the
+  // default selection come from the backend (scripts.common, reused via the
+  // existing GET /api/deals/exchanges endpoint) rather than a hardcoded
+  // "NSE" literal here. Multi-select: the user may pick any non-empty
+  // subset of the enabled exchanges (defaults to DEFAULT_EXCHANGES).
+  const [exchanges, setExchanges] = useState([]);
+  const [enabledExchanges, setEnabledExchanges] = useState([]);
+
+  // Clear All Insider & Deal Data - destructive action, gated behind an
+  // explicit "type CLEAR to confirm" modal.
+  const [showClearModal, setShowClearModal] = useState(false);
+  const [clearConfirmText, setClearConfirmText] = useState('');
+  const [clearing, setClearing] = useState(false);
+  const [clearError, setClearError] = useState(null);
+  const [clearResult, setClearResult] = useState(null);
+
   const logContainerRef = useRef(null);
   const dataStore = systemStatus?.database;
 
@@ -87,14 +104,36 @@ export default function SystemStatus({ systemStatus, onRefreshStatus }) {
     fetchRecentTasks();
   }, []);
 
+  useEffect(() => {
+    api.getDealExchanges()
+      .then((res) => {
+        const enabled = res.enabled_exchanges || [];
+        setEnabledExchanges(enabled);
+        // Default selection = configured DEFAULT_EXCHANGES (a subset of
+        // enabled), falling back to every enabled exchange if the backend
+        // didn't return one - never a hardcoded ["NSE"] literal here.
+        const defaults = (res.default_exchanges && res.default_exchanges.length > 0)
+          ? res.default_exchanges
+          : enabled;
+        setExchanges(defaults.filter((e) => enabled.includes(e)));
+      })
+      .catch((err) => console.error('Failed to fetch exchange configuration:', err));
+  }, []);
+
+  const toggleExchange = (ex) => {
+    setExchanges((prev) => (prev.includes(ex) ? prev.filter((e) => e !== ex) : [...prev, ex]));
+  };
+
   const handleRunInsider = async () => {
+    if (exchanges.length === 0) return; // Run button is disabled in this state too
+
     let args = [];
     if (insiderMode === 'quick') args = ['--max-pages', '1'];
     else if (insiderMode === '5pages') args = ['--max-pages', '5'];
     else if (insiderMode === 'full') args = ['--full-sync'];
 
     try {
-      const res = await api.runScript('insider_data_extractor', args);
+      const res = await api.runScript('insider_data_extractor', args, exchanges);
       if (res?.task?.task_id) {
         setActiveTaskId(res.task.task_id);
         setShowLogModal(true);
@@ -102,6 +141,29 @@ export default function SystemStatus({ systemStatus, onRefreshStatus }) {
     } catch (err) {
       alert(`Failed to start pipeline: ${err.response?.data?.detail || err.message}`);
     }
+  };
+
+  const handleClearInsiderData = async () => {
+    setClearing(true);
+    setClearError(null);
+    try {
+      const res = await api.clearInsiderData(clearConfirmText);
+      setClearResult(res);
+      setClearConfirmText('');
+      await onRefreshStatus();
+      await fetchRecentTasks();
+    } catch (err) {
+      setClearError(err.response?.data?.detail || 'Unable to clear insider & deal data.');
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  const closeClearModal = () => {
+    setShowClearModal(false);
+    setClearConfirmText('');
+    setClearError(null);
+    setClearResult(null);
   };
 
   const handleRunNSE = async () => {
@@ -165,6 +227,11 @@ export default function SystemStatus({ systemStatus, onRefreshStatus }) {
   const lastInsiderTask = insiderTasks[0];
   const lastInsiderSuccess = insiderTasks.find((t) => t.status === 'SUCCESS');
   const insiderErrorCount = insiderTasks.filter((t) => t.status === 'FAILED').length;
+
+  // The currently tracked task (taskData) is shared across all three
+  // pipeline cards - only surface it here when it actually belongs to the
+  // Insider & Deal Data Pipeline, so the NSE/Master cards don't bleed in.
+  const insiderTaskData = taskData?.script_key === 'insider_data_extractor' ? taskData : null;
 
   // Data streams definition without database/SQL technicalities
   const dataStreams = [
@@ -627,6 +694,39 @@ export default function SystemStatus({ systemStatus, onRefreshStatus }) {
               {/* Pipeline Telemetry Stats */}
               <div className="p-3 rounded-xl bg-slate-100/80 dark:bg-slate-950/70 border border-slate-200 dark:border-white/5 space-y-1.5 text-xs font-mono mb-4">
                 <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                  <span>Exchange:</span>
+                  <span className="font-bold text-cyan-700 dark:text-cyan-400">
+                    {(insiderTaskData?.exchanges || exchanges).join(', ') || '—'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
+                  <span>Status:</span>
+                  <span
+                    className={`font-bold ${
+                      insiderTaskData?.status === 'RUNNING'
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : insiderTaskData?.status === 'FAILED'
+                        ? 'text-rose-600 dark:text-rose-400'
+                        : insiderTaskData?.status === 'SUCCESS'
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-slate-800 dark:text-slate-200'
+                    }`}
+                  >
+                    {insiderTaskData?.status === 'RUNNING'
+                      ? 'Running...'
+                      : insiderTaskData?.status === 'SUCCESS'
+                      ? 'Completed'
+                      : insiderTaskData?.status === 'FAILED'
+                      ? 'Failed'
+                      : 'Ready'}
+                  </span>
+                </div>
+                {insiderTaskData?.status === 'FAILED' && (
+                  <div className="pt-1.5 mt-1.5 border-t border-slate-200 dark:border-white/5 text-rose-600 dark:text-rose-400 text-[11px] truncate" title={insiderTaskData.logs?.slice(-1)[0]?.text}>
+                    Error: {insiderTaskData.logs?.slice(-1)[0]?.text || 'Pipeline failed - view logs for details.'}
+                  </div>
+                )}
+                <div className="flex items-center justify-between text-slate-600 dark:text-slate-400 pt-1.5 mt-1.5 border-t border-slate-200 dark:border-white/5">
                   <span>Last Run:</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200">
                     {lastInsiderTask?.start_time ? lastInsiderTask.start_time.split('T')[0] : 'Recent'}
@@ -651,6 +751,37 @@ export default function SystemStatus({ systemStatus, onRefreshStatus }) {
               </div>
 
               {/* Execution Options */}
+              <div className="space-y-2 mb-4">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 block">
+                  Exchange (select one or more)
+                </label>
+                {enabledExchanges.length > 0 ? (
+                  <>
+                    <div className="flex items-center gap-3 flex-wrap p-2 rounded-xl bg-white dark:bg-slate-950/60 border border-slate-200 dark:border-white/5">
+                      {enabledExchanges.map((ex) => (
+                        <label key={ex} className="flex items-center gap-1.5 text-xs font-mono font-bold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={exchanges.includes(ex)}
+                            onChange={() => toggleExchange(ex)}
+                            disabled={taskData?.status === 'RUNNING'}
+                            className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer disabled:cursor-not-allowed"
+                          />
+                          {ex}
+                        </label>
+                      ))}
+                    </div>
+                    {exchanges.length === 0 && (
+                      <div className="text-[11px] text-rose-600 dark:text-rose-400 font-sans font-semibold">
+                        Please select at least one exchange.
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">Loading exchange configuration...</div>
+                )}
+              </div>
+
               <div className="space-y-2 mb-4">
                 <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 block">
                   Ingestion Mode
@@ -682,11 +813,25 @@ export default function SystemStatus({ systemStatus, onRefreshStatus }) {
 
             <button
               onClick={handleRunInsider}
-              disabled={taskData?.status === 'RUNNING'}
+              disabled={taskData?.status === 'RUNNING' || exchanges.length === 0}
               className="btn-primary w-full py-2.5 text-xs tracking-wider uppercase font-bold disabled:opacity-50"
             >
               <Play className="w-3.5 h-3.5 fill-current" /> Trigger Deals Ingestion
             </button>
+
+            {/* Data Management - destructive action, clearly separated from execution controls */}
+            <div className="mt-4 pt-4 border-t border-slate-200 dark:border-white/[0.08]">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 mb-2">
+                <AlertTriangle className="w-3.5 h-3.5" /> Data Management
+              </div>
+              <button
+                onClick={() => setShowClearModal(true)}
+                disabled={taskData?.status === 'RUNNING'}
+                className="btn-secondary w-full py-2 text-xs font-bold text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 border-rose-500/30 disabled:opacity-50"
+              >
+                Clear All Insider & Deal Data
+              </button>
+            </div>
           </div>
 
           {/* Pipeline Card 2: NSE EOD Market Data Pipeline */}
@@ -1042,6 +1187,111 @@ export default function SystemStatus({ systemStatus, onRefreshStatus }) {
               >
                 Close Console
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 8. Clear All Insider & Deal Data - destructive confirmation modal */}
+      {showClearModal && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="clear-data-modal-title"
+        >
+          <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl overflow-hidden flex flex-col border border-rose-500/30 shadow-2xl">
+            <div className="p-5 border-b border-slate-200 dark:border-white/10 flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 flex-shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <h3 id="clear-data-modal-title" className="text-sm font-extrabold text-slate-900 dark:text-white">
+                Clear Insider & Deal Data
+              </h3>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs text-slate-600 dark:text-slate-400">
+              {clearResult ? (
+                <div>
+                  <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold text-sm mb-3">
+                    <CheckCircle2 className="w-4 h-4" /> Data cleared successfully.
+                  </div>
+                  <div className="font-mono space-y-1 p-3 rounded-xl bg-slate-100 dark:bg-slate-950/60 border border-slate-200 dark:border-white/5">
+                    {Object.entries(clearResult.deleted || {}).map(([label, count]) => (
+                      <div key={label} className="flex items-center justify-between">
+                        <span className="text-slate-500 dark:text-slate-400">{label.replace(/_/g, ' ')}:</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200">{count.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p>
+                    This will <strong className="text-rose-600 dark:text-rose-400">permanently delete</strong> insider
+                    and deal data from the database. This action cannot be undone.
+                  </p>
+                  <div>
+                    <div className="font-bold text-slate-700 dark:text-slate-300 mb-1.5">Affected data:</div>
+                    <ul className="space-y-1 font-mono">
+                      <li>• Insider Trading transactions</li>
+                      <li>• SAST deals</li>
+                      <li>• Bulk deals</li>
+                      <li>• Block deals</li>
+                      <li>• Derived Insider Conviction score snapshots</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-700 dark:text-slate-300 mb-1.5">Preserved (never affected):</div>
+                    <ul className="space-y-1 font-mono">
+                      <li>• NSE EOD market data</li>
+                      <li>• Symbol mappings (manual & automated)</li>
+                      <li>• Application configuration</li>
+                    </ul>
+                  </div>
+                  <div className="pt-2">
+                    <label htmlFor="clear-confirm-input" className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      Type CLEAR to confirm:
+                    </label>
+                    <input
+                      id="clear-confirm-input"
+                      type="text"
+                      autoFocus
+                      value={clearConfirmText}
+                      onChange={(e) => setClearConfirmText(e.target.value)}
+                      placeholder="CLEAR"
+                      disabled={clearing}
+                      className="glass-input w-full text-xs font-mono py-2"
+                    />
+                  </div>
+                  {clearError && (
+                    <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 font-semibold">
+                      {clearError}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="p-4 bg-slate-100/70 dark:bg-slate-950/50 border-t border-slate-200 dark:border-white/10 flex items-center justify-end gap-2.5">
+              {clearResult ? (
+                <button onClick={closeClearModal} className="btn-primary py-2 px-4 text-xs font-bold">
+                  Close
+                </button>
+              ) : (
+                <>
+                  <button onClick={closeClearModal} disabled={clearing} className="btn-secondary py-2 px-4 text-xs font-bold disabled:opacity-50">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleClearInsiderData}
+                    disabled={clearing || clearConfirmText !== 'CLEAR'}
+                    className="btn-primary py-2 px-4 text-xs font-bold bg-rose-600 hover:bg-rose-700 border-rose-600 disabled:opacity-40"
+                  >
+                    {clearing ? 'Clearing...' : 'Clear Data'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

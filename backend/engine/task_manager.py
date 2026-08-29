@@ -40,8 +40,14 @@ class TaskManager:
             })
         return scripts
 
-    def start_script(self, script_key: str, extra_args: Optional[List[str]] = None) -> Dict[str, Any]:
-        """Launches a registered script in the background and tracks its live output."""
+    def start_script(self, script_key: str, extra_args: Optional[List[str]] = None, exchanges: Optional[List[str]] = None) -> Dict[str, Any]:
+        """
+        Launches a registered script in the background and tracks its live output.
+        `exchanges` is display-only metadata (the actual `--exchange` values, if
+        any, are already baked into extra_args by the caller) - carried on the
+        task record so polling clients can keep showing which exchange(s) a
+        pipeline run is/was scoped to.
+        """
         canonical_key = resolve_script_key(script_key)
         if not canonical_key or canonical_key not in SCRIPT_REGISTRY:
             raise ValueError(f"Unknown script: '{script_key}'")
@@ -66,6 +72,7 @@ class TaskManager:
             "script_name": script_info["name"],
             "command": " ".join(cmd),
             "args": extra_args or [],
+            "exchanges": exchanges,
             "status": "RUNNING",  # RUNNING, SUCCESS, FAILED, STOPPED
             "start_time": start_time,
             "end_time": None,
@@ -89,6 +96,7 @@ class TaskManager:
             "task_id": task_id,
             "script_key": canonical_key,
             "script_name": script_info["name"],
+            "exchanges": exchanges,
             "status": "RUNNING",
             "start_time": start_time,
         }
@@ -154,6 +162,7 @@ class TaskManager:
                 "script_key": t["script_key"],
                 "script_name": t["script_name"],
                 "command": t["command"],
+                "exchanges": t.get("exchanges"),
                 "status": t["status"],
                 "start_time": t["start_time"],
                 "end_time": t["end_time"],
@@ -174,6 +183,7 @@ class TaskManager:
                     "task_id": t["task_id"],
                     "script_key": t["script_key"],
                     "script_name": t["script_name"],
+                    "exchanges": t.get("exchanges"),
                     "status": t["status"],
                     "start_time": t["start_time"],
                     "end_time": t["end_time"],

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   ShieldAlert, ShieldQuestion, Search, RefreshCw, CheckCircle2, XCircle, Link2, History, X, ChevronDown, ChevronUp,
+  AlertTriangle,
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -121,6 +122,33 @@ export default function SymbolMatching() {
   const [expandedRow, setExpandedRow] = useState(null);
   const [history, setHistory] = useState({});
 
+  // Hard-validation banner (backend/routers/symbol_matcher.py:/validate) -
+  // any mapping whose resolved symbol isn't in the CURRENT NSE reference
+  // universe, surfaced but never auto-modified.
+  const [validation, setValidation] = useState(null);
+
+  // Clear & Re-Match NSE Symbols - destructive (clears automatic mappings),
+  // gated behind an explicit "type CLEAR to confirm" modal, same pattern as
+  // System Health's Clear All Insider & Deal Data action.
+  const [showRematchModal, setShowRematchModal] = useState(false);
+  const [rematchConfirmText, setRematchConfirmText] = useState('');
+  const [rematching, setRematching] = useState(false);
+  const [rematchError, setRematchError] = useState(null);
+  const [rematchResult, setRematchResult] = useState(null);
+
+  const fetchValidation = useCallback(async () => {
+    try {
+      const res = await api.validateSymbolMappings();
+      setValidation(res);
+    } catch (err) {
+      console.error('Failed to load symbol mapping validation:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchValidation();
+  }, [fetchValidation]);
+
   const fetchRows = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -151,6 +179,29 @@ export default function SymbolMatching() {
     }
   };
 
+  const handleRematch = async () => {
+    setRematching(true);
+    setRematchError(null);
+    try {
+      const res = await api.rematchSymbols(rematchConfirmText);
+      setRematchResult(res);
+      setRematchConfirmText('');
+      await fetchRows();
+      await fetchValidation();
+    } catch (err) {
+      setRematchError(err.response?.data?.detail || 'Unable to re-match symbols.');
+    } finally {
+      setRematching(false);
+    }
+  };
+
+  const closeRematchModal = () => {
+    setShowRematchModal(false);
+    setRematchConfirmText('');
+    setRematchError(null);
+    setRematchResult(null);
+  };
+
   const toggleHistory = async (row) => {
     if (expandedRow === row.mapping_id) {
       setExpandedRow(null);
@@ -178,13 +229,32 @@ export default function SymbolMatching() {
   return (
     <div className="space-y-6">
       <div className="glass-panel p-6 rounded-2xl">
-        <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2 tracking-tight">
-          <ShieldAlert className="w-5 h-5 text-cyan-600 dark:text-cyan-400" /> Symbol Matching
-        </h2>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-          Review and manage how insider/deal security names resolve to NSE symbols. Only MATCHED and MANUAL_OVERRIDE
-          mappings are used for backtesting, Conviction scoring, screening, and Stock Intelligence.
-        </p>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2 tracking-tight">
+              <ShieldAlert className="w-5 h-5 text-cyan-600 dark:text-cyan-400" /> Symbol Matching
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Review and manage how insider/deal security names resolve to NSE symbols. Only MATCHED and MANUAL_OVERRIDE
+              mappings are used for backtesting, Conviction scoring, screening, and Stock Intelligence.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowRematchModal(true)}
+            className="btn-secondary py-2 px-3.5 text-xs font-bold text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 border-rose-500/30 flex-shrink-0"
+          >
+            Clear & Re-Match NSE Symbols
+          </button>
+        </div>
+
+        {validation && !validation.valid && (
+          <div className="mt-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2 font-semibold">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+            {validation.invalid_resolved_symbol_count} mapping(s) resolve to a symbol no longer in the current NSE
+            reference universe ({validation.invalid_manual_override_count} manual override(s) need review) - run
+            Clear & Re-Match to rebuild automatic mappings.
+          </div>
+        )}
       </div>
 
       <div className="glass-panel p-6 rounded-2xl">
@@ -233,6 +303,7 @@ export default function SymbolMatching() {
                 <tr>
                   <th className="py-2.5 px-3">Security Name</th>
                   <th className="py-2.5 px-3">Candidate Symbol</th>
+                  <th className="py-2.5 px-3">Exchange</th>
                   <th className="py-2.5 px-3 text-right">Confidence</th>
                   <th className="py-2.5 px-3">Method</th>
                   <th className="py-2.5 px-3">Status</th>
@@ -248,6 +319,17 @@ export default function SymbolMatching() {
                     <tr className="hover:bg-slate-100/70 dark:hover:bg-white/[0.02]">
                       <td className="py-2.5 px-3 font-sans font-bold text-slate-900 dark:text-white max-w-[220px] truncate" title={r.original_security_name}>{r.original_security_name}</td>
                       <td className="py-2.5 px-3 font-bold">{r.resolved_nse_symbol || 'N/A'}</td>
+                      <td className="py-2.5 px-3 font-sans">
+                        {r.resolved_exchange ? (
+                          <span className="badge-tag">{r.resolved_exchange}</span>
+                        ) : r.resolved_nse_symbol ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md border text-[10px] font-black tracking-wide bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30">
+                            UNKNOWN
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
                       <td className="py-2.5 px-3 text-right">{(r.match_confidence * 100).toFixed(0)}%</td>
                       <td className="py-2.5 px-3 font-sans"><span className="badge-tag">{r.match_method}</span></td>
                       <td className="py-2.5 px-3 font-sans"><StatusBadge status={r.match_status} /></td>
@@ -270,7 +352,7 @@ export default function SymbolMatching() {
                     </tr>
                     {expandedRow === r.mapping_id && (
                       <tr className="bg-slate-50 dark:bg-white/[0.02]">
-                        <td colSpan={9} className="py-3 px-4 font-sans">
+                        <td colSpan={10} className="py-3 px-4 font-sans">
                           {!history[r.mapping_id] || history[r.mapping_id].length === 0 ? (
                             <p className="text-xs text-slate-500 dark:text-slate-400">No audit history for this mapping.</p>
                           ) : (
@@ -300,6 +382,105 @@ export default function SymbolMatching() {
           onClose={() => setMappingTarget(null)}
           onSaved={() => { setMappingTarget(null); fetchRows(); }}
         />
+      )}
+
+      {showRematchModal && (
+        <div
+          className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="rematch-modal-title"
+        >
+          <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl overflow-hidden flex flex-col border border-rose-500/30 shadow-2xl">
+            <div className="p-5 border-b border-slate-200 dark:border-white/10 flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 flex-shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <h3 id="rematch-modal-title" className="text-sm font-extrabold text-slate-900 dark:text-white">
+                Re-match NSE Symbols
+              </h3>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs text-slate-600 dark:text-slate-400">
+              {rematchResult ? (
+                <div>
+                  <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold text-sm mb-3">
+                    <CheckCircle2 className="w-4 h-4" /> Re-match complete.
+                  </div>
+                  <div className="font-mono space-y-1 p-3 rounded-xl bg-slate-100 dark:bg-slate-950/60 border border-slate-200 dark:border-white/5">
+                    <div className="flex items-center justify-between"><span>Automatic mappings cleared:</span><span className="font-bold text-slate-800 dark:text-slate-200">{rematchResult.cleared_automatic_mappings}</span></div>
+                    <div className="flex items-center justify-between"><span>Securities re-processed:</span><span className="font-bold text-slate-800 dark:text-slate-200">{rematchResult.total_securities_processed}</span></div>
+                    {Object.entries(rematchResult.status_counts || {}).map(([status, count]) => (
+                      <div key={status} className="flex items-center justify-between">
+                        <span>{status.replace(/_/g, ' ')}:</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200">{count}</span>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between pt-1.5 mt-1.5 border-t border-slate-200 dark:border-white/5">
+                      <span>Invalid resolved symbols remaining:</span>
+                      <span className={`font-bold ${rematchResult.invalid_resolved_symbol_count > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                        {rematchResult.invalid_resolved_symbol_count}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p>
+                    This will clear existing <strong className="text-rose-600 dark:text-rose-400">automatic</strong> symbol
+                    matches and rebuild them using the current NSE security universe, restricted to enabled exchanges.
+                  </p>
+                  <p>
+                    Existing <strong className="text-slate-700 dark:text-slate-300">manual mappings will be preserved</strong> -
+                    this operation never deletes or modifies a manual override, even an invalid one (those are flagged
+                    for human review above, not auto-corrected).
+                  </p>
+                  <div className="pt-2">
+                    <label htmlFor="rematch-confirm-input" className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      Type CLEAR to confirm:
+                    </label>
+                    <input
+                      id="rematch-confirm-input"
+                      type="text"
+                      autoFocus
+                      value={rematchConfirmText}
+                      onChange={(e) => setRematchConfirmText(e.target.value)}
+                      placeholder="CLEAR"
+                      disabled={rematching}
+                      className="glass-input w-full text-xs font-mono py-2"
+                    />
+                  </div>
+                  {rematchError && (
+                    <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 font-semibold">
+                      {rematchError}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="p-4 bg-slate-100/70 dark:bg-slate-950/50 border-t border-slate-200 dark:border-white/10 flex items-center justify-end gap-2.5">
+              {rematchResult ? (
+                <button onClick={closeRematchModal} className="btn-primary py-2 px-4 text-xs font-bold">
+                  Close
+                </button>
+              ) : (
+                <>
+                  <button onClick={closeRematchModal} disabled={rematching} className="btn-secondary py-2 px-4 text-xs font-bold disabled:opacity-50">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleRematch}
+                    disabled={rematching || rematchConfirmText !== 'CLEAR'}
+                    className="btn-primary py-2 px-4 text-xs font-bold bg-rose-600 hover:bg-rose-700 border-rose-600 disabled:opacity-40"
+                  >
+                    {rematching ? 'Re-matching...' : 'Clear & Re-Match'}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

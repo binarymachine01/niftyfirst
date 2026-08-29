@@ -70,11 +70,16 @@ def ensure_schema():
 
 
 def _row_to_result(row: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        from backend.engine.symbol_matcher import RESOLVED_EXCHANGE
+    except ImportError:
+        from .symbol_matcher import RESOLVED_EXCHANGE
     return {
         "mapping_id": row["id"],
         "original_security_name": row["original_security_name"],
         "normalized_security_name": row["normalized_security_name"],
         "resolved_nse_symbol": row["resolved_nse_symbol"],
+        "resolved_exchange": RESOLVED_EXCHANGE if row["resolved_nse_symbol"] else None,
         "match_method": row["match_method"],
         "match_confidence": float(row["match_confidence"]),
         "match_status": row["match_status"],
@@ -253,4 +258,44 @@ def list_all(search: Optional[str] = None, status: Optional[str] = None, limit: 
     query += " ORDER BY updated_at DESC LIMIT %s;"
     params.append(limit)
     rows = fetch_all(query, tuple(params))
+    return [_row_to_result(r) for r in rows]
+
+
+def count_by_status() -> Dict[str, int]:
+    """Aggregate mapping counts per status - the real, DB-sourced numbers for the re-match summary report."""
+    rows = fetch_all("SELECT match_status, count(*) as count FROM security_mappings GROUP BY match_status;")
+    return {r["match_status"]: r["count"] for r in rows}
+
+
+def clear_automatic_mappings() -> int:
+    """
+    Deletes every AUTOMATIC mapping (is_manual_override = FALSE), leaving
+    manual overrides completely untouched. Automatic mappings are a pure,
+    fully regenerable derived cache - the next resolve_symbol_detailed()
+    call for each affected security recomputes and re-persists it fresh
+    (against whatever candidate universe/filtering is active at that time).
+    Returns the number of rows deleted.
+    """
+    with get_db_cursor(commit=True) as cur:
+        cur.execute("DELETE FROM security_mappings WHERE is_manual_override = FALSE;")
+        return cur.rowcount
+
+
+def find_invalid_resolved_symbols(valid_symbols: List[str]) -> List[Dict[str, Any]]:
+    """
+    Returns every persisted mapping (manual or automatic) whose
+    resolved_nse_symbol is NOT in the given current NSE reference universe
+    - i.e. a symbol that would resolve to a foreign/stale/delisted symbol
+    despite being labeled NSE. Being labeled "NSE" is not sufficient on its
+    own (see backend/engine/symbol_matcher.py:is_symbol_currently_valid) -
+    this is the actual database-backed hard-validation check.
+    """
+    rows = fetch_all(
+        """
+        SELECT * FROM security_mappings
+        WHERE resolved_nse_symbol IS NOT NULL
+          AND NOT (resolved_nse_symbol = ANY(%s));
+        """,
+        (list(valid_symbols),),
+    )
     return [_row_to_result(r) for r in rows]

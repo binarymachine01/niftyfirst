@@ -14,6 +14,7 @@ from typing import List, Optional, Dict, Any, Tuple
 from pydantic import BaseModel, Field
 
 from . import configuration as cfg
+from scripts.common import ENABLED_EXCHANGES
 
 DEAL_CATEGORIES = ("Insider Trading", "SAST Deals", "Block Deals", "Bulk Deals")
 
@@ -62,6 +63,10 @@ class DeliveryFilters(BaseModel):
 
 class DealFilters(BaseModel):
     categories: List[str] = Field(default_factory=lambda: list(DEAL_CATEGORIES))
+    # Defaults to whatever the pipeline is currently configured to extract
+    # (scripts.common:ENABLED_EXCHANGES, NSE-only today) - not a separate,
+    # duplicated exchange list. An empty list means "no exchange constraint".
+    exchanges: List[str] = Field(default_factory=lambda: list(ENABLED_EXCHANGES))
 
 
 class ConvictionFilters(BaseModel):
@@ -92,6 +97,20 @@ def filter_deals_by_category(deals: List[Dict[str, Any]], categories: List[str])
         return deals
     allowed = set(categories)
     return [d for d in deals if d.get("deal_category") in allowed]
+
+
+def filter_deals_by_exchange(deals: List[Dict[str, Any]], exchanges: List[str]) -> List[Dict[str, Any]]:
+    """
+    Restricts a deal list to the selected exchanges, case-insensitive.
+    In practice this is a no-op today (every stored deal is already
+    NSE-only, enforced upstream at extraction time - see
+    scripts/common:is_exchange_enabled) but keeps the Screener consistent
+    and ready for when ENABLED_EXCHANGES grows.
+    """
+    if not exchanges:
+        return deals
+    allowed = {e.strip().upper() for e in exchanges}
+    return [d for d in deals if (d.get("exchange_name") or "").strip().upper() in allowed]
 
 
 def _fails_min_max(value: Optional[float], min_val: Optional[float], max_val: Optional[float]) -> bool:

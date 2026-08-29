@@ -7,6 +7,8 @@ export default function DealsExplorer() {
   const [loading, setLoading] = useState(false);
   const [category, setCategory] = useState('all');
   const [action, setAction] = useState('all');
+  const [exchange, setExchange] = useState('all');
+  const [availableExchanges, setAvailableExchanges] = useState([]);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -19,6 +21,7 @@ export default function DealsExplorer() {
       const res = await api.getDeals({
         category: category !== 'all' ? category : undefined,
         action: action !== 'all' ? action : undefined,
+        exchange: exchange !== 'all' ? exchange : undefined,
         search: search.trim() || undefined,
         page,
         page_size: 25,
@@ -42,12 +45,26 @@ export default function DealsExplorer() {
     }
   };
 
+  const fetchExchanges = async () => {
+    try {
+      const res = await api.getDealExchanges();
+      // Union of enabled + available, so a configured-but-not-yet-seen
+      // exchange (e.g. right after enabling BSE, before any BSE deal has
+      // been extracted) still shows up as a selectable option.
+      const combined = Array.from(new Set([...(res.enabled_exchanges || []), ...(res.available_exchanges || [])]));
+      setAvailableExchanges(combined);
+    } catch (err) {
+      console.error('Failed to fetch exchanges:', err);
+    }
+  };
+
   useEffect(() => {
     fetchDeals();
-  }, [category, action, page]);
+  }, [category, action, exchange, page]);
 
   useEffect(() => {
     fetchSummary();
+    fetchExchanges();
   }, []);
 
   const handleSearchSubmit = (e) => {
@@ -164,6 +181,21 @@ export default function DealsExplorer() {
               <option value="all">All Actions</option>
               <option value="BUY">BUY Only</option>
               <option value="SELL">SELL Only</option>
+            </select>
+
+            {/* Exchange Filter - options reflect scripts.common:ENABLED_EXCHANGES (NSE only today) */}
+            <select
+              value={exchange}
+              onChange={(e) => {
+                setExchange(e.target.value);
+                setPage(1);
+              }}
+              className="glass-input text-xs py-1.5 font-medium"
+            >
+              <option value="all">All Exchanges</option>
+              {availableExchanges.map((ex) => (
+                <option key={ex} value={ex}>{ex}</option>
+              ))}
             </select>
 
             <button type="submit" className="btn-secondary text-xs py-1.5 px-3.5">

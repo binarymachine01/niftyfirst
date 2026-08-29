@@ -7,6 +7,7 @@ import os
 import sys
 import logging
 from pathlib import Path
+from typing import Optional
 from dotenv import load_dotenv
 
 # ==============================================================================
@@ -46,6 +47,90 @@ DEFAULT_HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
     "Connection": "keep-alive",
 }
+
+# ==============================================================================
+# EXCHANGE CONFIGURATION
+# ==============================================================================
+# Centralized, configurable exchange filter for the insider/deal data
+# pipeline (scripts/insider_data_extractor). This is the ONLY place exchange
+# eligibility is decided - extraction code calls is_exchange_enabled()
+# rather than comparing against a literal exchange name, so enabling an
+# additional exchange later is a configuration change, not a code change.
+#
+# Default is NSE-only, and MUST stay that way in production today: the
+# platform's market-price/EOD dataset (nse_equity_eod) contains NSE data
+# only, so a deal on a non-enabled exchange could never be correlated with
+# price/technical data anyway (SymbolMatcher, Conviction, the Screener, and
+# backtesting all resolve against nse_equity_eod, not exchange-scoped
+# tables - none of them need to change for this to work correctly).
+#
+# To enable an additional exchange once its EOD data and a verified
+# StockEdge API code exist: set ENABLED_EXCHANGES=NSE,BSE and add the
+# verified code to EXCHANGE_API_CODES below. Until both of those are done,
+# adding a name to ENABLED_EXCHANGES that has no entry in
+# EXCHANGE_API_CODES causes that exchange to be skipped with a warning,
+# never silently mismatched or guessed.
+ENABLED_EXCHANGES = [e.strip().upper() for e in os.getenv("ENABLED_EXCHANGES", "NSE").split(",") if e.strip()]
+
+# Maps an exchange name to the StockEdge API's numeric "exchange"
+# query-parameter code. This is the single source of truth for which
+# exchanges the application actually knows how to process end-to-end -
+# SUPPORTED_EXCHANGES (below) is derived from its keys, never listed
+# separately. Only NSE (code 1) has ever been verified against the live
+# API (it is the value this pipeline already used, previously hard-coded
+# inline). BSE's code is deliberately NOT guessed here.
+EXCHANGE_API_CODES = {
+    "NSE": 1,
+}
+
+# Exchanges the application knows how to process at all (has a verified
+# StockEdge API integration for). Kept distinct from ENABLED_EXCHANGES:
+# "supported" means the integration exists; "enabled" means it is actually
+# turned on for extraction today. ENABLED_EXCHANGES is not required to be a
+# subset (see fetch_api_data's own skip-with-warning handling for an
+# enabled-but-unsupported exchange), but any exchange picker in the UI must
+# only ever offer ENABLED_EXCHANGES, never all of SUPPORTED_EXCHANGES.
+SUPPORTED_EXCHANGES = list(EXCHANGE_API_CODES.keys())
+
+# The exchange(s) used when a caller (UI, API request, or a direct script
+# invocation) doesn't explicitly choose any. Falls back to the first enabled
+# exchange if unset or misconfigured, never to a bare literal "NSE"
+# scattered at each call site. Comma-separated, same shape as
+# ENABLED_EXCHANGES (e.g. DEFAULT_EXCHANGES=NSE,BSE once both are enabled).
+_default_exchanges_env = [
+    e.strip().upper()
+    for e in os.getenv("DEFAULT_EXCHANGES", os.getenv("DEFAULT_EXCHANGE", "")).split(",")
+    if e.strip()
+]
+if _default_exchanges_env:
+    DEFAULT_EXCHANGES = _default_exchanges_env
+elif ENABLED_EXCHANGES:
+    DEFAULT_EXCHANGES = [ENABLED_EXCHANGES[0]]
+else:
+    DEFAULT_EXCHANGES = ["NSE"]
+
+# Single-value convenience for callers that only ever need one default
+# (e.g. the Deals Explorer / Smart Screener exchange filters) - always the
+# first entry of DEFAULT_EXCHANGES, never a separately configured value.
+DEFAULT_EXCHANGE = DEFAULT_EXCHANGES[0]
+
+
+def is_exchange_enabled(exchange_name: Optional[str]) -> bool:
+    """
+    Single centralized exchange-eligibility check, case-insensitive.
+    Every extraction/filtering decision in the insider/deal pipeline goes
+    through this function rather than comparing against a literal name.
+    """
+    if not exchange_name:
+        return False
+    return exchange_name.strip().upper() in ENABLED_EXCHANGES
+
+
+def is_exchange_supported(exchange_name: Optional[str]) -> bool:
+    """Whether the application has a verified integration for this exchange at all (see SUPPORTED_EXCHANGES)."""
+    if not exchange_name:
+        return False
+    return exchange_name.strip().upper() in SUPPORTED_EXCHANGES
 
 # ==============================================================================
 # LOGGING SETUP

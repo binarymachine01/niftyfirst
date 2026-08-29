@@ -20,7 +20,10 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 # Import shared base configurations and database layer
-from scripts.common import BASE_DIR, DOWNLOADS_DIR, DEFAULT_HEADERS, setup_logger
+from scripts.common import (
+    BASE_DIR, DOWNLOADS_DIR, DEFAULT_HEADERS, setup_logger,
+    ENABLED_EXCHANGES, DEFAULT_EXCHANGE, EXCHANGE_API_CODES, is_exchange_enabled,
+)
 try:
     from .database import DealsDatabase
 except ImportError:
@@ -88,8 +91,14 @@ API_CONFIGS = [
         "sheet_name": "Insider Trading",
         "key": "insider",
         "url": "https://api.stockedge.com/Api/DealsDashboardApi/GetLatestInsidertradingDeals",
+        # This endpoint accepts a request-level "exchange" filter - the code
+        # is injected per enabled exchange via EXCHANGE_API_CODES (see
+        # main()), never hard-coded here. Block/Bulk Deals below have no
+        # such endpoint param at all, so they rely entirely on the
+        # post-fetch is_exchange_enabled() filter applied uniformly to all
+        # four categories in fetch_api_data().
+        "exchange_param_key": "exchange",
         "extra_params": {
-            "exchange": 1,
             "insiderDealTransactionTypes": "",
             "dealModeTypes": ""
         }
@@ -99,8 +108,8 @@ API_CONFIGS = [
         "sheet_name": "SAST Deals",
         "key": "sast",
         "url": "https://api.stockedge.com/Api/DealsDashboardApi/GetLatestSASTDeals",
+        "exchange_param_key": "exchange",
         "extra_params": {
-            "exchange": 1,
             "sastTransactionTypes": "",
             "dealModeTypes": ""
         }
@@ -118,7 +127,9 @@ def fetch_api_data(
     lang: str = LANG,
     max_pages: Optional[int] = None,
     incremental: bool = True,
-    save_to_db: bool = True
+    save_to_db: bool = True,
+    exchange: Optional[str] = None,
+    run_exchanges: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Extracts data from a single StockEdge API endpoint by iterating pages.
@@ -126,24 +137,53 @@ def fetch_api_data(
       - Checks database for existing IDs on each page to avoid duplicates.
       - In incremental mode, stops pagination early when existing historical records are met.
       - Directly bulk inserts newly fetched records.
+
+    Exchange filtering (centralized via scripts.common.is_exchange_enabled,
+    never a scattered literal comparison): if api_config declares an
+    "exchange_param_key" and `exchange` is a known code in
+    EXCHANGE_API_CODES, the request itself is scoped to that exchange.
+    Regardless of that, every fetched record is ALSO checked against
+    is_exchange_enabled() before it is counted, inserted, or returned -
+    this is what protects categories (Block/Bulk Deals) whose StockEdge
+    endpoint has no exchange-scoped request parameter at all.
+
+    `run_exchanges` additionally restricts eligibility to the exchange(s)
+    selected for THIS invocation (e.g. a single exchange picked in the
+    System Health UI) - a subset of ENABLED_EXCHANGES, not a replacement
+    for it. Defaults to ENABLED_EXCHANGES (i.e. no extra restriction) when
+    not provided, so every existing caller is unaffected.
     """
+    run_exchanges = set(run_exchanges) if run_exchanges is not None else set(ENABLED_EXCHANGES)
     name = api_config["name"]
     sheet_name = api_config["sheet_name"]
     url = api_config["url"]
-    extra_params = api_config.get("extra_params", {})
+    extra_params = dict(api_config.get("extra_params", {}))
+    exchange_param_key = api_config.get("exchange_param_key")
+    if exchange_param_key and exchange:
+        exchange_code = EXCHANGE_API_CODES.get(exchange)
+        if exchange_code is not None:
+            extra_params[exchange_param_key] = exchange_code
+        else:
+            logger.warning(
+                f"Exchange '{exchange}' is enabled but has no verified StockEdge API code in "
+                f"EXCHANGE_API_CODES - skipping '{name}' for this exchange rather than guessing."
+            )
+            return []
     table_name = TABLE_MAPPING.get(sheet_name)
 
     page = 1
     all_fetched_records = []
     total_new_inserted = 0
+    total_filtered_out = 0
 
     print(f"==================================================")
-    print(f" Extracting: {name}")
+    print(f" Extracting: {name}" + (f" [{exchange}]" if exchange else ""))
     print(f" URL: {url}")
     if max_pages:
         print(f" Page Limit: Max {max_pages} pages")
     print(f" Incremental Sync: {'Enabled (stops when existing DB records found)' if (incremental and db and save_to_db) else 'Disabled'}")
     print(f" Database Storage: {'Enabled' if (db and save_to_db) else 'Disabled'}")
+    print(f" Exchanges In Scope For This Run: {', '.join(sorted(run_exchanges))}")
     print(f"==================================================")
 
     with requests.Session() as session:
@@ -187,16 +227,34 @@ def fetch_api_data(
                     print(f"--> Daily sync up to date. Stopped further pagination for '{name}'.\n")
                     break
 
+                # Exchange filter - the ONLY place this decision is made
+                # (is_exchange_enabled), applied uniformly across all four
+                # deal categories regardless of whether the endpoint itself
+                # supports a request-level exchange param. Disabled-exchange
+                # records are excluded from the database, the Excel export,
+                # AND this function's return value. The second condition
+                # additionally scopes down to whatever subset of enabled
+                # exchanges was selected for this particular run.
+                eligible_records = [
+                    r for r in new_records
+                    if is_exchange_enabled(r.get("ExchangeName"))
+                    and (r.get("ExchangeName") or "").strip().upper() in run_exchanges
+                ]
+                filtered_out = len(new_records) - len(eligible_records)
+                total_filtered_out += filtered_out
+
                 # Insert new records into DB
-                if db and save_to_db and new_records:
-                    inserted_count = db.insert_deals_by_category(sheet_name, new_records)
+                if db and save_to_db and eligible_records:
+                    inserted_count = db.insert_deals_by_category(sheet_name, eligible_records)
                     total_new_inserted += inserted_count
-                    print(f"[Page {page}] Fetched {len(data)} items | New to DB: {len(new_records)} | Skipped Duplicates: {len(existing_ids)}")
+                    filter_note = f" | Filtered (disabled exchange): {filtered_out}" if filtered_out else ""
+                    print(f"[Page {page}] Fetched {len(data)} items | New to DB: {len(eligible_records)} | Skipped Duplicates: {len(existing_ids)}{filter_note}")
                 else:
                     duplicate_info = f" | Skipped Duplicates: {len(existing_ids)}" if existing_ids else ""
-                    print(f"[Page {page}] Fetched {len(data)} items{duplicate_info} | Total: {len(all_fetched_records) + len(data)}")
+                    filter_note = f" | Filtered (disabled exchange): {filtered_out}" if filtered_out else ""
+                    print(f"[Page {page}] Fetched {len(data)} items{duplicate_info}{filter_note} | Total: {len(all_fetched_records) + len(eligible_records)}")
 
-                all_fetched_records.extend(data)
+                all_fetched_records.extend(eligible_records)
 
                 # If some records on this page were already in DB during incremental sync,
                 # the next page is guaranteed to be older data that already exists
@@ -212,8 +270,11 @@ def fetch_api_data(
                 print(f"\n[Error] Failed to fetch page {page} for '{name}': {e}\n")
                 break
 
+    filtered_note = f" | {total_filtered_out} record(s) excluded (disabled exchange)" if total_filtered_out else ""
     if db and save_to_db:
-        print(f"[Summary] '{name}': {total_new_inserted} new records stored into database ({table_name}).\n")
+        print(f"[Summary] '{name}': {total_new_inserted} new records stored into database ({table_name}){filtered_note}.\n")
+    elif total_filtered_out:
+        print(f"[Summary] '{name}': {filtered_note.lstrip(' |')}.\n")
 
     return all_fetched_records
 
@@ -441,11 +502,51 @@ def parse_args():
         default=PAGE_SIZE,
         help=f"Number of records per API page request (default: {PAGE_SIZE})",
     )
+    parser.add_argument(
+        "--exchange",
+        type=str,
+        nargs="+",
+        default=None,
+        help=(
+            "Restrict this run to one or more enabled exchanges (must all be "
+            f"in ENABLED_EXCHANGES: {', '.join(ENABLED_EXCHANGES)}), e.g. "
+            "--exchange NSE or --exchange NSE BSE. "
+            f"Default: process every enabled exchange (currently: {', '.join(ENABLED_EXCHANGES)})."
+        ),
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+
+    # Exchange scoping for this run - every requested exchange is validated
+    # against the centrally configured ENABLED_EXCHANGES (scripts.common),
+    # never silently dropping an unrecognized/disabled one and continuing
+    # with the rest.
+    if args.exchange:
+        requested_exchanges = []
+        for raw in args.exchange:
+            for name in raw.split(","):  # tolerate "--exchange NSE,BSE" too
+                name = name.strip().upper()
+                if name and name not in requested_exchanges:
+                    requested_exchanges.append(name)
+
+        disabled = [e for e in requested_exchanges if not is_exchange_enabled(e)]
+        if disabled:
+            noun = "Exchange" if len(disabled) == 1 else "Exchanges"
+            verb = "is" if len(disabled) == 1 else "are"
+            print(f"[ERROR] {noun} {', '.join(disabled)} {verb} not currently enabled.")
+            print(f"[ERROR] Enabled exchanges: {', '.join(ENABLED_EXCHANGES)}")
+            sys.exit(1)
+        if not requested_exchanges:
+            print("[ERROR] Please select at least one exchange.")
+            sys.exit(1)
+        run_exchanges = requested_exchanges
+    else:
+        run_exchanges = list(ENABLED_EXCHANGES)
+
+    print(f"[INFO] Exchange configuration: {', '.join(run_exchanges)}")
 
     db = None
     if not args.no_db:
@@ -475,17 +576,45 @@ def main():
 
     for config in configs_to_run:
         sheet_name = config["sheet_name"]
-        records = fetch_api_data(
-            api_config=config,
-            db=db,
-            page_size=args.page_size,
-            delay_seconds=DELAY_SECONDS,
-            timeout=REQUEST_TIMEOUT,
-            lang=LANG,
-            max_pages=args.max_pages,
-            incremental=incremental,
-            save_to_db=(not args.no_db and db is not None)
-        )
+        exchange_param_key = config.get("exchange_param_key")
+
+        if exchange_param_key:
+            # Endpoint supports a request-level exchange filter - fetch once
+            # per exchange in scope for this run (today: just NSE, so this is
+            # a single iteration with unchanged behavior; adding BSE later
+            # requires no change here, only ENABLED_EXCHANGES/EXCHANGE_API_CODES).
+            records: List[Dict[str, Any]] = []
+            for exchange in run_exchanges:
+                records.extend(fetch_api_data(
+                    api_config=config,
+                    db=db,
+                    page_size=args.page_size,
+                    delay_seconds=DELAY_SECONDS,
+                    timeout=REQUEST_TIMEOUT,
+                    lang=LANG,
+                    max_pages=args.max_pages,
+                    incremental=incremental,
+                    save_to_db=(not args.no_db and db is not None),
+                    exchange=exchange,
+                    run_exchanges=run_exchanges,
+                ))
+        else:
+            # No exchange-scoped request param exists for this endpoint
+            # (Block/Bulk Deals) - fetch_api_data still filters every
+            # returned record via is_exchange_enabled() AND run_exchanges.
+            records = fetch_api_data(
+                api_config=config,
+                db=db,
+                page_size=args.page_size,
+                delay_seconds=DELAY_SECONDS,
+                timeout=REQUEST_TIMEOUT,
+                lang=LANG,
+                max_pages=args.max_pages,
+                incremental=incremental,
+                save_to_db=(not args.no_db and db is not None),
+                run_exchanges=run_exchanges,
+            )
+
         raw_data_dict[sheet_name] = records
 
     # Save Excel report if not disabled

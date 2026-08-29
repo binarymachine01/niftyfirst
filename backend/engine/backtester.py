@@ -16,6 +16,8 @@ except ImportError:
     from ..database import fetch_all
     from .symbol_matcher import matcher, MatchStatus
 
+from scripts.common import ENABLED_EXCHANGES
+
 logger = logging.getLogger(__name__)
 
 
@@ -63,9 +65,14 @@ class BacktestEngine:
         LEFT JOIN stockedge_sast_deals s ON v.id = s.id AND v.deal_category = 'SAST Deals'
         LEFT JOIN stockedge_block_deals blk ON v.id = blk.id AND v.deal_category = 'Block Deals'
         LEFT JOIN stockedge_bulk_deals blk2 ON v.id = blk2.id AND v.deal_category = 'Bulk Deals'
-        WHERE 1=1
+        WHERE UPPER(v.exchange_name) = ANY(%s)
         """
-        params = []
+        # Exchange filtering happens BEFORE candidate generation: a deal
+        # whose own exchange isn't enabled is excluded from this result set
+        # entirely, so it never even reaches matcher.resolve_symbol_detailed()
+        # in run_backtest() below - never filtered out afterward by its
+        # resolved symbol.
+        params = [ENABLED_EXCHANGES]
 
         if categories:
             query += " AND v.deal_category = ANY(%s)"

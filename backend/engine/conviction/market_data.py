@@ -22,6 +22,7 @@ except ImportError:
     from ..symbol_matcher import matcher, MatchStatus
 
 from . import configuration as cfg
+from scripts.common import ENABLED_EXCHANGES
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,7 @@ def load_symbol_deals(
         v.deal_category,
         v.id,
         v.trade_date,
+        v.exchange_name,
         v.security_name,
         v.client_name,
         v.action,
@@ -132,9 +134,14 @@ def load_symbol_deals(
     LEFT JOIN stockedge_bulk_deals blk2 ON v.id = blk2.id AND v.deal_category = 'Bulk Deals'
     WHERE v.action = ANY(%s)
       AND v.trade_date >= %s AND v.trade_date <= %s
+      AND UPPER(v.exchange_name) = ANY(%s)
     ORDER BY v.trade_date ASC, v.id ASC;
     """
-    rows = fetch_all(query, (list(cfg.CONVICTION_ACTIONS), start_date, as_of_date))
+    # Exchange filtering happens BEFORE candidate generation: a deal whose
+    # own exchange isn't enabled is excluded from this result set entirely,
+    # so it is never even passed into matcher.resolve_symbol_detailed()
+    # below - not merely filtered out afterward by its resolved symbol.
+    rows = fetch_all(query, (list(cfg.CONVICTION_ACTIONS), start_date, as_of_date, ENABLED_EXCHANGES))
 
     matcher.initialize()
     matched = []
@@ -174,6 +181,7 @@ def load_active_symbols(
         v.deal_category,
         v.id,
         v.trade_date,
+        v.exchange_name,
         v.security_name,
         v.client_name,
         v.action,
@@ -189,9 +197,14 @@ def load_active_symbols(
     LEFT JOIN stockedge_bulk_deals blk2 ON v.id = blk2.id AND v.deal_category = 'Bulk Deals'
     WHERE v.action = ANY(%s)
       AND v.trade_date >= %s AND v.trade_date <= %s
+      AND UPPER(v.exchange_name) = ANY(%s)
     ORDER BY v.trade_date ASC, v.id ASC;
     """
-    rows = fetch_all(query, (list(cfg.CONVICTION_ACTIONS), start_date, as_of_date))
+    # Exchange filtering happens BEFORE candidate generation: a deal whose
+    # own exchange isn't enabled is excluded from this result set entirely,
+    # so it is never even passed into matcher.resolve_symbol_detailed()
+    # below - not merely filtered out afterward by its resolved symbol.
+    rows = fetch_all(query, (list(cfg.CONVICTION_ACTIONS), start_date, as_of_date, ENABLED_EXCHANGES))
 
     matcher.initialize()
     grouped: Dict[str, List[Dict[str, Any]]] = defaultdict(list)

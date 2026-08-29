@@ -9,6 +9,11 @@ try:
 except ImportError:
     from ..database import fetch_all, fetch_one
 
+# scripts.common is always resolved as a top-level package relative to the
+# project root (inserted into sys.path by backend/main.py), regardless of
+# how backend itself was imported - no try/except fallback needed here.
+from scripts.common import ENABLED_EXCHANGES, DEFAULT_EXCHANGE, SUPPORTED_EXCHANGES, DEFAULT_EXCHANGES
+
 router = APIRouter(prefix="/api/deals", tags=["Deals"])
 
 
@@ -16,6 +21,7 @@ router = APIRouter(prefix="/api/deals", tags=["Deals"])
 def get_deals(
     category: Optional[str] = Query(None, description="Filter by deal category"),
     action: Optional[str] = Query(None, description="Filter by action (BUY, SELL)"),
+    exchange: Optional[str] = Query(None, description="Filter by exchange (e.g. NSE)"),
     search: Optional[str] = Query(None, description="Search security name or client name"),
     start_date: Optional[str] = Query(None, description="Start date YYYY-MM-DD"),
     end_date: Optional[str] = Query(None, description="End date YYYY-MM-DD"),
@@ -50,6 +56,10 @@ def get_deals(
     if action and action != "all":
         query += " AND action = %s"
         params.append(action.upper())
+
+    if exchange and exchange != "all":
+        query += " AND UPPER(exchange_name) = %s"
+        params.append(exchange.upper())
 
     if search:
         query += " AND (security_name ILIKE %s OR client_name ILIKE %s)"
@@ -121,4 +131,30 @@ def get_deals_summary():
     return {
         "by_category": category_stats,
         "top_securities": top_securities,
+    }
+
+
+@router.get("/exchanges")
+def get_deal_exchanges():
+    """
+    Returns the exchange configuration (scripts.common - the single
+    centralized source, never duplicated here) alongside whatever exchanges
+    actually appear in stored deals. The one exchange-config endpoint reused
+    by every exchange picker in the app: the single-select dropdowns in the
+    Deals Explorer / Smart Screener UIs, and the multi-select selector in
+    the System Health Insider & Deal Data Pipeline card.
+    """
+    rows = fetch_all("SELECT DISTINCT exchange_name FROM stockedge_all_deals_view WHERE exchange_name IS NOT NULL ORDER BY exchange_name;")
+    available = [r["exchange_name"] for r in rows if r["exchange_name"]]
+    return {
+        # Exchanges the application has a verified integration for at all
+        # (a superset of enabled_exchanges) - informational only, never
+        # itself offered as selectable options.
+        "supported_exchanges": SUPPORTED_EXCHANGES,
+        # Exchanges actually turned on for extraction today - the ONLY
+        # values any exchange picker in the UI may offer as selectable.
+        "enabled_exchanges": ENABLED_EXCHANGES,
+        "default_exchange": DEFAULT_EXCHANGE,
+        "default_exchanges": DEFAULT_EXCHANGES,
+        "available_exchanges": available,
     }

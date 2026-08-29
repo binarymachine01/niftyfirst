@@ -17,6 +17,8 @@ except ImportError:
     from ..engine.symbol_matcher import matcher, MatchStatus, normalize_name
     from ..engine import symbol_matcher_persistence as persistence
 
+from scripts.common import ENABLED_EXCHANGES
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/symbol-matcher", tags=["Symbol Matcher"])
@@ -30,7 +32,14 @@ def _deal_stats_by_normalized_name() -> Dict[str, Dict[str, Any]]:
     rather than risking a mismatched SQL-side normalization. Reuses the
     existing stockedge_all_deals_view - no deal data is duplicated.
     """
-    rows = fetch_all("SELECT deal_category, security_name, trade_date, total_value FROM stockedge_all_deals_view;")
+    # Exchange filtering happens BEFORE these stats are computed: a deal on
+    # a disabled exchange must never inflate a security's deal_count/value
+    # in the review queues, nor keep a BSE-only company (which can never
+    # have a valid NSE match) showing up as if it still needed review.
+    rows = fetch_all(
+        "SELECT deal_category, security_name, trade_date, total_value FROM stockedge_all_deals_view WHERE UPPER(exchange_name) = ANY(%s);",
+        (ENABLED_EXCHANGES,),
+    )
     stats: Dict[str, Dict[str, Any]] = {}
     for r in rows:
         key = normalize_name(r["security_name"])
@@ -178,3 +187,93 @@ def get_mapping_history(mapping_id: int):
     """Full audit trail of changes to a mapping."""
     history = persistence.get_history(mapping_id=mapping_id)
     return {"mapping_id": mapping_id, "count": len(history), "history": history}
+
+
+class RematchRequest(BaseModel):
+    confirmation: str = Field(..., description='Must be exactly "CLEAR" to confirm this destructive operation.')
+
+
+@router.post("/rematch")
+def rematch_symbols(req: RematchRequest):
+    """
+    Clear & Re-Match NSE Symbols.
+
+    Deletes every AUTOMATIC mapping (is_manual_override = FALSE - manual
+    overrides are NEVER touched by this endpoint) and re-runs matching for
+    every distinct security appearing in an ENABLED_EXCHANGES deal, against
+    the current NSE reference universe (nse_equity_eod). This is the
+    "clear stale automatic matches, then rerun" operation: exchange
+    filtering is applied on the INPUT side (which deals are even considered)
+    via the same WHERE UPPER(exchange_name) = ANY(%s) filter now used by
+    every other symbol-resolution query in the app - a company whose deals
+    are all on a disabled exchange is never fed into the matcher at all,
+    rather than being matched and filtered out afterward.
+    """
+    if req.confirmation != "CLEAR":
+        raise HTTPException(status_code=400, detail='Confirmation text must be exactly "CLEAR".')
+
+    matcher.initialize()
+    cleared = persistence.clear_automatic_mappings()
+    matcher.clear_cache()
+
+    rows = fetch_all(
+        """
+        SELECT DISTINCT
+            v.security_name,
+            COALESCE(i.security_slug, s.security_slug, blk.security_slug, blk2.security_slug, '') as security_slug
+        FROM stockedge_all_deals_view v
+        LEFT JOIN stockedge_insider_deals i ON v.id = i.id AND v.deal_category = 'Insider Trading'
+        LEFT JOIN stockedge_sast_deals s ON v.id = s.id AND v.deal_category = 'SAST Deals'
+        LEFT JOIN stockedge_block_deals blk ON v.id = blk.id AND v.deal_category = 'Block Deals'
+        LEFT JOIN stockedge_bulk_deals blk2 ON v.id = blk2.id AND v.deal_category = 'Bulk Deals'
+        WHERE UPPER(v.exchange_name) = ANY(%s);
+        """,
+        (ENABLED_EXCHANGES,),
+    )
+
+    for r in rows:
+        matcher.resolve_symbol_detailed(r["security_name"], r.get("security_slug"))
+
+    status_counts = persistence.count_by_status()
+    valid_symbols = matcher.get_valid_nse_symbols()
+    invalid = persistence.find_invalid_resolved_symbols(list(valid_symbols))
+
+    logger.warning(
+        f"[AUDIT] Symbol re-match executed. Cleared {cleared} automatic mapping(s); "
+        f"reprocessed {len(rows)} distinct securities from {ENABLED_EXCHANGES}. "
+        f"Resulting status counts: {status_counts}. Invalid resolved symbols remaining: {len(invalid)}."
+    )
+
+    return {
+        "status": "success",
+        "cleared_automatic_mappings": cleared,
+        "total_securities_processed": len(rows),
+        "status_counts": status_counts,
+        "invalid_resolved_symbol_count": len(invalid),
+    }
+
+
+@router.get("/validate")
+def validate_symbol_mappings():
+    """
+    Hard validation (not merely trusting a stored status): counts any
+    persisted mapping - manual or automatic - whose resolved_nse_symbol is
+    NOT in the CURRENT NSE reference universe (nse_equity_eod). Being
+    labeled "NSE" is not sufficient on its own; this must be 0 for the
+    NSE-only matching migration to be considered complete. Invalid manual
+    overrides are surfaced for human review here but are NEVER
+    automatically modified or deleted by this endpoint.
+    """
+    matcher.initialize()
+    valid_symbols = matcher.get_valid_nse_symbols()
+    invalid = persistence.find_invalid_resolved_symbols(list(valid_symbols))
+    invalid_manual = [m for m in invalid if m["is_manual_override"]]
+    invalid_automatic = [m for m in invalid if not m["is_manual_override"]]
+
+    return {
+        "valid": len(invalid) == 0,
+        "invalid_resolved_symbol_count": len(invalid),
+        "invalid_manual_override_count": len(invalid_manual),
+        "invalid_automatic_count": len(invalid_automatic),
+        "invalid_manual_overrides": invalid_manual,
+    }
