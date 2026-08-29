@@ -384,73 +384,6 @@ export default function StockInspector({ theme = 'dark' }) {
                   >
                     {r.key}
                   </button>
-=======
-      {/* Associated Deals Table */}
-      <div className="glass-panel p-6 rounded-2xl">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-extrabold text-slate-900 dark:text-white tracking-tight">
-            Insider & Block Transactions for {symbol} ({deals.length} Recorded)
-          </h3>
-        </div>
-        {deals.length === 0 ? (
-          <p className="text-xs text-slate-500 py-6 text-center">
-            No insider deals or block trades currently recorded for this stock in market data.
-          </p>
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-white/[0.06]">
-            <table className="w-full text-left text-xs border-collapse font-mono">
-              <thead className="bg-slate-100 dark:bg-[#0c1222] text-slate-700 dark:text-slate-400 uppercase text-[10px] tracking-wider">
-                <tr>
-                  <th className="py-2.5 px-3.5">Date</th>
-                  <th className="py-2.5 px-3.5">Category</th>
-                  <th className="py-2.5 px-3.5">Client / Promoter</th>
-                  <th className="py-2.5 px-3.5">Action</th>
-                  <th className="py-2.5 px-3.5 text-right">Quantity</th>
-                  <th className="py-2.5 px-3.5 text-right">Price</th>
-                  <th className="py-2.5 px-3.5 text-right">Total Turnover</th>
-                  <th className="py-2.5 px-3.5 text-right">1D</th>
-                  <th className="py-2.5 px-3.5 text-right">5D</th>
-                  <th className="py-2.5 px-3.5 text-right">20D</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.04]">
-                {deals.map((d) => (
-                  <tr key={d.id} className="hover:bg-slate-100/70 dark:hover:bg-white/[0.02]">
-                    <td className="py-2.5 px-3.5 text-slate-700 dark:text-slate-300">{d.trade_date}</td>
-                    <td className="py-2.5 px-3.5 font-sans">
-                      <span className="badge-tag">{d.deal_category}</span>
-                    </td>
-                    <td className="py-2.5 px-3.5 font-sans">
-                      {d.client_name ? (
-                        <button
-                          onClick={() => setSelectedClient(d.client_name)}
-                          className="text-slate-700 dark:text-slate-300 hover:text-cyan-600 dark:hover:text-cyan-400 underline decoration-dotted underline-offset-2 transition-colors"
-                        >
-                          {d.client_name}
-                        </button>
-                      ) : (
-                        'N/A'
-                      )}
-                    </td>
-                    <td className="py-2.5 px-3.5 font-sans">
-                      <span className={d.action === 'BUY' ? 'badge-buy' : 'badge-sell'}>
-                        {d.action}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3.5 text-right text-slate-800 dark:text-slate-200">
-                      {d.quantity ? Number(d.quantity).toLocaleString() : '-'}
-                    </td>
-                    <td className="py-2.5 px-3.5 text-right text-slate-800 dark:text-slate-200">
-                      {d.price ? `₹${Number(d.price).toFixed(2)}` : '-'}
-                    </td>
-                    <td className="py-2.5 px-3.5 text-right text-cyan-700 dark:text-cyan-300 font-bold">
-                      {d.total_value ? `₹${(Number(d.total_value) / 100000).toFixed(2)} L` : '-'}
-                    </td>
-                    <td className="py-2.5 px-3.5 text-right font-mono"><ReactionCell value={d.price_reaction?.['1d']} /></td>
-                    <td className="py-2.5 px-3.5 text-right font-mono"><ReactionCell value={d.price_reaction?.['5d']} /></td>
-                    <td className="py-2.5 px-3.5 text-right font-mono"><ReactionCell value={d.price_reaction?.['20d']} /></td>
-                  </tr>
->>>>>>> feature/dev
                 ))}
               </div>
               <div className="flex items-center gap-3 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
@@ -494,28 +427,45 @@ export default function StockInspector({ theme = 'dark' }) {
                                       <span className={t.action === 'BUY' ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-rose-600 dark:text-rose-400 font-bold'}>{t.action}</span>
                                       {' '}{t.deal_category} · {t.role || 'N/A'} · {t.client_name || 'N/A'} · {t.total_value ? formatValue(t.total_value) : 'N/A'}
                                     </div>
-                <div className="h-28 w-full mt-4 pt-3 border-t border-slate-200 dark:border-white/[0.06]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={filteredData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={isLight ? '#e2e8f0' : 'rgba(255,255,255,0.04)'} />
-                      <XAxis dataKey="trade_date" hide />
-                      <YAxis domain={[0, 100]} ticks={[30, 50, 70]} tick={{ fill: isLight ? '#64748b' : '#94a3b8', fontSize: 9 }} orientation="right" />
-                      <Tooltip content={<CustomTooltip />} />
-                      <ReferenceLine y={70} stroke="#f43f5e" strokeDasharray="3 3" />
-                      <ReferenceLine y={30} stroke="#10b981" strokeDasharray="3 3" />
-                      <Line type="monotone" dataKey="rsi_14" stroke="#8b5cf6" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }}
+                      />
+                      <Bar dataKey="range" shape={<CandleShape />} isAnimationActive={false} />
+                      {showDma20 && <Line type="monotone" dataKey="dma20" stroke="#f59e0b" strokeWidth={1.5} dot={false} connectNulls isAnimationActive={false} />}
+                      {showDma50 && <Line type="monotone" dataKey="dma50" stroke="#0ea5e9" strokeWidth={1.5} dot={false} connectNulls isAnimationActive={false} />}
+                      {showDma200 && <Line type="monotone" dataKey="dma200" stroke="#a855f7" strokeWidth={1.5} dot={false} connectNulls isAnimationActive={false} />}
+                      <Scatter dataKey="buyMarker" shape={<BuyMarkerShape />} isAnimationActive={false} />
+                      <Scatter dataKey="sellMarker" shape={<SellMarkerShape />} isAnimationActive={false} />
                     </ComposedChart>
                   </ResponsiveContainer>
-                  <div className="text-[10px] text-slate-400 dark:text-slate-600 text-right font-mono -mt-1">RSI (14)</div>
                 </div>
 
-                <div className="h-28 w-full mt-4 pt-3 border-t border-slate-200 dark:border-white/[0.06]">
+                {/* Volume Panel */}
+                <div className="h-20 w-full mt-2">
                   <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={filteredData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={isLight ? '#e2e8f0' : 'rgba(255,255,255,0.04)'} />
+                    <ComposedChart data={chartData} margin={{ top: 0, right: 10, left: 10, bottom: 0 }}>
                       <XAxis dataKey="trade_date" hide />
-                      <YAxis domain={[0, 100]} ticks={[0, 50, 100]} tick={{ fill: isLight ? '#64748b' : '#94a3b8', fontSize: 9 }} orientation="right" />
-                      <Tooltip content={<CustomTooltip />} />
+                      <YAxis hide />
+                      <Bar dataKey="volume" isAnimationActive={false}>
+                        {chartData.map((d, i) => (
+                          <Cell key={i} fill={d.close >= d.open ? '#10b98180' : '#f43f5e80'} />
+                        ))}
+                      </Bar>
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                  <div className="text-[10px] text-slate-400 dark:text-slate-600 text-right font-mono -mt-1">Volume</div>
+                </div>
+
+                {/* Delivery Panel */}
+                <div className="h-20 w-full mt-1">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={chartData} margin={{ top: 0, right: 10, left: 10, bottom: 0 }}>
+                      <XAxis dataKey="trade_date" hide />
+                      <YAxis hide domain={[0, 100]} />
                       {technical?.delivery?.avg_delivery_pct !== null && technical?.delivery?.avg_delivery_pct !== undefined && (
                         <ReferenceLine y={technical.delivery.avg_delivery_pct} stroke="#94a3b8" strokeDasharray="4 4" />
                       )}
