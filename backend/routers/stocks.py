@@ -82,11 +82,11 @@ def get_stock_history(
 @router.get("/{symbol}/deals")
 def get_stock_deals(symbol: str):
     """Returns all insider and large deals associated with this stock."""
-    # Find matching deals
     query = """
     SELECT
         deal_category,
         id,
+        symbol,
         trade_date,
         exchange_name,
         security_name,
@@ -97,10 +97,10 @@ def get_stock_deals(symbol: str):
         total_value,
         mode_description
     FROM stockedge_all_deals_view
-    WHERE security_name ILIKE %s OR security_name ILIKE %s
+    WHERE symbol = %s OR security_name ILIKE %s OR security_name ILIKE %s
     ORDER BY trade_date DESC;
     """
-    rows = fetch_all(query, (f"%{symbol}%", f"{symbol}%"))
+    rows = fetch_all(query, (symbol.upper(), f"%{symbol}%", f"{symbol}%"))
     for r in rows:
         r["trade_date"] = str(r["trade_date"])
 

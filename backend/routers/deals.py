@@ -34,6 +34,7 @@ def get_deals(
     SELECT
         deal_category,
         id,
+        symbol,
         trade_date,
         exchange_name,
         security_name,
@@ -49,27 +50,27 @@ def get_deals(
     """
     params = []
 
-    if category and category != "all":
+    if category and isinstance(category, str) and category != "all":
         query += " AND deal_category = %s"
         params.append(category)
 
-    if action and action != "all":
+    if action and isinstance(action, str) and action != "all":
         query += " AND action = %s"
         params.append(action.upper())
 
-    if exchange and exchange != "all":
+    if exchange and isinstance(exchange, str) and exchange != "all":
         query += " AND UPPER(exchange_name) = %s"
         params.append(exchange.upper())
 
-    if search:
-        query += " AND (security_name ILIKE %s OR client_name ILIKE %s)"
-        params.extend([f"%{search}%", f"%{search}%"])
+    if search and isinstance(search, str):
+        query += " AND (symbol ILIKE %s OR security_name ILIKE %s OR client_name ILIKE %s)"
+        params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
 
-    if start_date:
+    if start_date and isinstance(start_date, str):
         query += " AND trade_date >= %s"
         params.append(start_date)
 
-    if end_date:
+    if end_date and isinstance(end_date, str):
         query += " AND trade_date <= %s"
         params.append(end_date)
 

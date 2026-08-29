@@ -50,6 +50,7 @@ class BacktestEngine:
         SELECT
             v.deal_category,
             v.id,
+            v.symbol,
             v.trade_date,
             v.exchange_name,
             v.security_name,
@@ -172,19 +173,26 @@ class BacktestEngine:
         unique_symbols = set()
         status_counts = {MatchStatus.MATCHED: 0, MatchStatus.MANUAL_OVERRIDE: 0, MatchStatus.LOW_CONFIDENCE: 0, MatchStatus.UNMATCHED: 0}
         for d in deals:
-            match = matcher.resolve_symbol_detailed(d["security_name"], d.get("security_slug"))
-            status = match["match_status"]
-            status_counts[status] = status_counts.get(status, 0) + 1
-            if status in (MatchStatus.MATCHED, MatchStatus.MANUAL_OVERRIDE):
-                deal_symbols[d["id"]] = match["resolved_nse_symbol"]
-                unique_symbols.add(match["resolved_nse_symbol"])
+            sym = d.get("symbol")
+            if sym and str(sym).strip():
+                sym = str(sym).upper().strip()
+                status_counts[MatchStatus.MATCHED] = status_counts.get(MatchStatus.MATCHED, 0) + 1
+                deal_symbols[d["id"]] = sym
+                unique_symbols.add(sym)
+            else:
+                match = matcher.resolve_symbol_detailed(d["security_name"], d.get("security_slug"))
+                status = match["match_status"]
+                status_counts[status] = status_counts.get(status, 0) + 1
+                if status in (MatchStatus.MATCHED, MatchStatus.MANUAL_OVERRIDE):
+                    deal_symbols[d["id"]] = match["resolved_nse_symbol"]
+                    unique_symbols.add(match["resolved_nse_symbol"])
 
         symbol_mapping_audit = {
             "total_transactions": len(deals),
-            "matched": status_counts[MatchStatus.MATCHED],
-            "manual_override": status_counts[MatchStatus.MANUAL_OVERRIDE],
-            "excluded_low_confidence": status_counts[MatchStatus.LOW_CONFIDENCE],
-            "excluded_unmatched": status_counts[MatchStatus.UNMATCHED],
+            "matched": status_counts.get(MatchStatus.MATCHED, 0),
+            "manual_override": status_counts.get(MatchStatus.MANUAL_OVERRIDE, 0),
+            "excluded_low_confidence": status_counts.get(MatchStatus.LOW_CONFIDENCE, 0),
+            "excluded_unmatched": status_counts.get(MatchStatus.UNMATCHED, 0),
         }
 
         if not unique_symbols:

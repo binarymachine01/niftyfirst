@@ -149,10 +149,12 @@ CREATE INDEX IF NOT EXISTS idx_stockedge_bulk_security ON stockedge_bulk_deals (
 CREATE INDEX IF NOT EXISTS idx_stockedge_bulk_client ON stockedge_bulk_deals (client_name);
 
 -- 5. Consolidated Unified Deals View
-CREATE OR REPLACE VIEW stockedge_all_deals_view AS
+DROP VIEW IF EXISTS stockedge_all_deals_view;
+CREATE VIEW stockedge_all_deals_view AS
 SELECT
     'Insider Trading' AS deal_category,
     id,
+    symbol,
     COALESCE(transaction_from_date, process_date, reported_date) AS trade_date,
     exchange_name,
     security_name,
@@ -174,6 +176,7 @@ UNION ALL
 SELECT
     'SAST Deals' AS deal_category,
     id,
+    symbol,
     COALESCE(transaction_from_date, process_date, reported_date) AS trade_date,
     exchange_name,
     security_name,
@@ -184,8 +187,8 @@ SELECT
         ELSE UPPER(deal_transaction_type)
     END AS action,
     deal_quantity AS quantity,
-    NULL::NUMERIC(18,2) AS price,
-    NULL::NUMERIC(18,2) AS total_value,
+    value_per_share AS price,
+    COALESCE(total_deal_value, deal_quantity * value_per_share) AS total_value,
     COALESCE(deal_mode_description, deal_mode) AS mode_description,
     created_at
 FROM stockedge_sast_deals
@@ -195,6 +198,7 @@ UNION ALL
 SELECT
     'Block Deals' AS deal_category,
     id,
+    symbol,
     deal_date AS trade_date,
     exchange_name,
     security_name,
@@ -216,6 +220,7 @@ UNION ALL
 SELECT
     'Bulk Deals' AS deal_category,
     id,
+    symbol,
     deal_date AS trade_date,
     exchange_name,
     security_name,
