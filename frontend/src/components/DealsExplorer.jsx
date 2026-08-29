@@ -226,7 +226,14 @@ export default function DealsExplorer() {
                       <span className="badge-tag">{d.deal_category}</span>
                     </td>
                     <td className="py-3 px-3.5 font-sans">
-                      <div className="font-bold text-slate-900 dark:text-white text-xs tracking-tight">{d.security_name}</div>
+                      <div className="flex items-center gap-1.5">
+                        {d.symbol && (
+                          <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border border-cyan-500/25">
+                            {d.symbol}
+                          </span>
+                        )}
+                        <span className="font-bold text-slate-900 dark:text-white text-xs tracking-tight">{d.security_name}</span>
+                      </div>
                       <div className="text-[10px] text-slate-500 dark:text-slate-400">{d.exchange_name || 'NSE'}</div>
                     </td>
                     <td className="py-3 px-3.5 font-sans text-slate-700 dark:text-slate-300 truncate max-w-[190px]" title={d.client_name}>

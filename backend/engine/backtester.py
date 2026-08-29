@@ -48,6 +48,7 @@ class BacktestEngine:
         SELECT
             v.deal_category,
             v.id,
+            v.symbol,
             v.trade_date,
             v.exchange_name,
             v.security_name,
@@ -159,7 +160,11 @@ class BacktestEngine:
         deal_symbols = {}
         unique_symbols = set()
         for d in deals:
-            sym = matcher.resolve_symbol(d["security_name"], d.get("security_slug"))
+            sym = d.get("symbol")
+            if sym and str(sym).strip():
+                sym = str(sym).upper().strip()
+            else:
+                sym = matcher.resolve_symbol(d["security_name"], d.get("security_slug"))
             deal_symbols[d["id"]] = sym
             if sym:
                 unique_symbols.add(sym)

@@ -89,12 +89,14 @@ export default function SystemStatus({ systemStatus, onRefreshStatus }) {
 
   const handleRunInsider = async () => {
     let args = [];
-    if (insiderMode === 'quick') args = ['--max-pages', '1'];
-    else if (insiderMode === '5pages') args = ['--max-pages', '5'];
-    else if (insiderMode === 'full') args = ['--full-sync'];
+    if (insiderMode === 'today') args = ['--today'];
+    else if (insiderMode === 'pit') args = ['--category', 'pit'];
+    else if (insiderMode === 'bulk') args = ['--category', 'bulk'];
+    else if (insiderMode === 'block') args = ['--category', 'block'];
+    else if (insiderMode === 'all') args = ['--category', 'all'];
 
     try {
-      const res = await api.runScript('insider_data_extractor', args);
+      const res = await api.runScript('nse_deals', args);
       if (res?.task?.task_id) {
         setActiveTaskId(res.task.task_id);
         setShowLogModal(true);
@@ -657,10 +659,10 @@ export default function SystemStatus({ systemStatus, onRefreshStatus }) {
                 </label>
                 <div className="grid grid-cols-2 gap-1.5 text-xs font-mono">
                   {[
-                    { id: 'daily', label: 'Daily Sync', desc: 'Auto-deduplicated' },
-                    { id: 'quick', label: '1 Page Test', desc: '20 records test' },
-                    { id: '5pages', label: '5 Pages', desc: '100 records' },
-                    { id: 'full', label: 'Full Sync', desc: 'Historical backfill' },
+                    { id: 'today', label: 'Recent (Today)', desc: 'Last 5 trading days' },
+                    { id: 'all', label: '30 Days Feed', desc: 'All categories' },
+                    { id: 'pit', label: 'PIT Insider Only', desc: 'SEBI PIT disclosures' },
+                    { id: 'bulk', label: 'Bulk & Block', desc: 'High turnover trades' },
                   ].map((opt) => (
                     <button
                       key={opt.id}

@@ -22,11 +22,11 @@ SCRIPT_REGISTRY = {
         "default_args": ["--today"],
         "schedule_cron": "30 20 * * 1-5",  # Weekdays at 20:30 IST
     },
-    "insider_data_extractor": {
-        "name": "Insider Trading & Deals Ingestion Pipeline",
-        "script_path": BASE_DIR / "scripts" / "insider_data_extractor" / "stockedge_deals_extractor.py",
-        "description": "Extracts Block, Bulk, Insider Trading, and SAST deals from StockEdge into PostgreSQL with daily duplicate prevention and Excel export",
-        "default_args": [],
+    "nse_deals": {
+        "name": "Official NSE Insider & Deals Ingestion Pipeline",
+        "script_path": BASE_DIR / "scripts" / "nse_deals" / "extractor.py",
+        "description": "Extracts Insider Trading (PIT), Bulk Deals, Block Deals, and Short Selling / SAST from official NSE India APIs into PostgreSQL and Excel",
+        "default_args": ["--today"],
         "schedule_cron": "00 21 * * 1-5",  # Weekdays at 21:00 IST
     },
     "web": {
@@ -43,11 +43,15 @@ ALIASES = {
     "nse": "nse_eod",
     "bhavcopy": "nse_eod",
     "nse_bhavcopy": "nse_eod",
-    "insider": "insider_data_extractor",
-    "insider_data": "insider_data_extractor",
-    "stockedge": "insider_data_extractor",
-    "deals": "insider_data_extractor",
-    "deals_extractor": "insider_data_extractor",
+    "insider": "nse_deals",
+    "insider_data": "nse_deals",
+    "insider_data_extractor": "nse_deals",
+    "stockedge": "nse_deals",
+    "deals": "nse_deals",
+    "deals_extractor": "nse_deals",
+    "pit": "nse_deals",
+    "bulk": "nse_deals",
+    "block": "nse_deals",
     "app": "web",
     "webapp": "web",
     "server": "web",
