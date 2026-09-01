@@ -27,8 +27,8 @@ export const api = {
     return response.data;
   },
 
-  getDealsSummary: async () => {
-    const response = await client.get('/api/deals/summary');
+  getDealsSummary: async (params = {}) => {
+    const response = await client.get('/api/deals/summary', { params });
     return response.data;
   },
 

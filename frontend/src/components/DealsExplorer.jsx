@@ -1,5 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Filter, Layers, ChevronLeft, ChevronRight, RefreshCw, ArrowUpRight, ArrowDownRight, ExternalLink, Calendar, Building } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Search,
+  Filter,
+  Layers,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  ArrowUpRight,
+  ArrowDownRight,
+  Calendar,
+  ArrowUpDown,
+  RotateCcw,
+  Check,
+  TrendingUp,
+  X,
+} from 'lucide-react';
 import { api } from '../services/api';
 import ClientDrilldownModal from './ClientDrilldownModal';
 
@@ -16,6 +31,13 @@ function ReactionCell({ value }) {
   );
 }
 
+function formatDate(d) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function DealsExplorer() {
   const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -30,14 +52,112 @@ export default function DealsExplorer() {
   const [summary, setSummary] = useState(null);
   const [selectedClient, setSelectedClient] = useState(null);
 
+  // New Feature States
+  const [netBuyOnly, setNetBuyOnly] = useState(false);
+  const [datePreset, setDatePreset] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [showCustomDateModal, setShowCustomDateModal] = useState(false);
+  const [sortOption, setSortOption] = useState('date_desc');
+
+  const customModalRef = useRef(null);
+
+  const getSortParams = () => {
+    switch (sortOption) {
+      case 'date_asc':
+        return { sort_by: 'date', sort_order: 'asc' };
+      case 'value_desc':
+        return { sort_by: 'value', sort_order: 'desc' };
+      case 'value_asc':
+        return { sort_by: 'value', sort_order: 'asc' };
+      case 'date_desc':
+      default:
+        return { sort_by: 'date', sort_order: 'desc' };
+    }
+  };
+
+  const computeDateRange = (preset) => {
+    const today = new Date();
+    if (preset === 'today') {
+      const todayStr = formatDate(today);
+      return { start: todayStr, end: todayStr };
+    } else if (preset === '7d') {
+      const past = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return { start: formatDate(past), end: formatDate(today) };
+    } else if (preset === '30d') {
+      const past = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+      return { start: formatDate(past), end: formatDate(today) };
+    } else if (preset === '90d') {
+      const past = new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000);
+      return { start: formatDate(past), end: formatDate(today) };
+    } else if (preset === 'all') {
+      return { start: '', end: '' };
+    }
+    return { start: startDate, end: endDate };
+  };
+
+  const handleDatePresetChange = (preset) => {
+    setDatePreset(preset);
+    setPage(1);
+    if (preset === 'custom') {
+      setShowCustomDateModal(true);
+    } else {
+      setShowCustomDateModal(false);
+      const { start, end } = computeDateRange(preset);
+      setStartDate(start);
+      setEndDate(end);
+    }
+  };
+
+  const applyCustomDateRange = () => {
+    setStartDate(customFrom);
+    setEndDate(customTo);
+    setShowCustomDateModal(false);
+    setPage(1);
+  };
+
+  const clearCustomDateRange = () => {
+    setCustomFrom('');
+    setCustomTo('');
+    setStartDate('');
+    setEndDate('');
+    setDatePreset('all');
+    setShowCustomDateModal(false);
+    setPage(1);
+  };
+
+  const handleResetFilters = () => {
+    setCategory('all');
+    setAction('all');
+    setExchange('all');
+    setSearch('');
+    setNetBuyOnly(false);
+    setDatePreset('all');
+    setStartDate('');
+    setEndDate('');
+    setCustomFrom('');
+    setCustomTo('');
+    setShowCustomDateModal(false);
+    setSortOption('date_desc');
+    setPage(1);
+  };
+
   const fetchDeals = async () => {
     setLoading(true);
     try {
+      const sort = getSortParams();
       const res = await api.getDeals({
         category: category !== 'all' ? category : undefined,
         action: action !== 'all' ? action : undefined,
         exchange: exchange !== 'all' ? exchange : undefined,
         search: search.trim() || undefined,
+        start_date: startDate || undefined,
+        end_date: endDate || undefined,
+        net_buy_only: netBuyOnly,
+        sort_by: sort.sort_by,
+        sort_order: sort.sort_order,
         page,
         page_size: 25,
       });
@@ -53,7 +173,15 @@ export default function DealsExplorer() {
 
   const fetchSummary = async () => {
     try {
-      const res = await api.getDealsSummary();
+      const res = await api.getDealsSummary({
+        category: category !== 'all' ? category : undefined,
+        action: action !== 'all' ? action : undefined,
+        exchange: exchange !== 'all' ? exchange : undefined,
+        search: search.trim() || undefined,
+        start_date: startDate || undefined,
+        end_date: endDate || undefined,
+        net_buy_only: netBuyOnly,
+      });
       setSummary(res);
     } catch (err) {
       console.error('Failed to fetch summary:', err);
@@ -63,9 +191,6 @@ export default function DealsExplorer() {
   const fetchExchanges = async () => {
     try {
       const res = await api.getDealExchanges();
-      // Union of enabled + available, so a configured-but-not-yet-seen
-      // exchange (e.g. right after enabling BSE, before any BSE deal has
-      // been extracted) still shows up as a selectable option.
       const combined = Array.from(new Set([...(res.enabled_exchanges || []), ...(res.available_exchanges || [])]));
       setAvailableExchanges(combined);
     } catch (err) {
@@ -75,10 +200,13 @@ export default function DealsExplorer() {
 
   useEffect(() => {
     fetchDeals();
-  }, [category, action, exchange, page]);
+  }, [category, action, exchange, netBuyOnly, startDate, endDate, sortOption, page]);
 
   useEffect(() => {
     fetchSummary();
+  }, [category, action, exchange, netBuyOnly, startDate, endDate]);
+
+  useEffect(() => {
     fetchExchanges();
   }, []);
 
@@ -86,7 +214,19 @@ export default function DealsExplorer() {
     e.preventDefault();
     setPage(1);
     fetchDeals();
+    fetchSummary();
   };
+
+  const hasActiveFilters =
+    category !== 'all' ||
+    action !== 'all' ||
+    exchange !== 'all' ||
+    search.trim() !== '' ||
+    netBuyOnly ||
+    datePreset !== 'all' ||
+    startDate !== '' ||
+    endDate !== '' ||
+    sortOption !== 'date_desc';
 
   return (
     <div className="space-y-6">
@@ -99,7 +239,7 @@ export default function DealsExplorer() {
               <div
                 key={idx}
                 onClick={() => {
-                  setCategory(cat.deal_category);
+                  setCategory(cat.deal_category === category ? 'all' : cat.deal_category);
                   setPage(1);
                 }}
                 className={`glass-panel p-5 rounded-2xl cursor-pointer transition-all duration-200 ${
@@ -141,23 +281,31 @@ export default function DealsExplorer() {
       )}
 
       {/* Main Deals Table Panel */}
-      <div className="glass-panel p-6 rounded-2xl">
-        {/* Controls */}
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-white/[0.08] mb-5">
+      <div className="glass-panel p-6 rounded-2xl relative">
+        {/* Controls Header */}
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-white/[0.08] mb-5">
           <div>
-            <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2 tracking-tight">
-              <Layers className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
-              Live Market Deals & Disclosures Repository
-            </h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2 tracking-tight">
+                <Layers className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
+                Live Market Deals & Disclosures Repository
+              </h2>
+              {netBuyOnly && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                  <TrendingUp className="w-3 h-3" /> Net Buy Mode
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Showing {deals.length} of {totalCount.toLocaleString()} indexed records in Market Repository
+              {startDate && endDate ? ` • Range: ${startDate} to ${endDate}` : startDate ? ` • From: ${startDate}` : endDate ? ` • To: ${endDate}` : ''}
             </p>
           </div>
 
           {/* Filters Form */}
-          <form onSubmit={handleSearchSubmit} className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+          <form onSubmit={handleSearchSubmit} className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
             {/* Search */}
-            <div className="relative flex-1 md:w-60">
+            <div className="relative flex-1 sm:w-52">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-400" />
               <input
                 type="text"
@@ -177,7 +325,7 @@ export default function DealsExplorer() {
               }}
               className="glass-input text-xs py-1.5 font-medium"
             >
-              <option value="all">All Categories</option>
+              <option value="all">All Deal Types</option>
               <option value="Insider Trading">Insider Trading</option>
               <option value="SAST Deals">SAST Deals</option>
               <option value="Block Deals">Block Deals</option>
@@ -193,12 +341,12 @@ export default function DealsExplorer() {
               }}
               className="glass-input text-xs py-1.5 font-medium"
             >
-              <option value="all">All Actions</option>
+              <option value="all">BUY / SELL</option>
               <option value="BUY">BUY Only</option>
               <option value="SELL">SELL Only</option>
             </select>
 
-            {/* Exchange Filter - options reflect scripts.common:ENABLED_EXCHANGES (NSE only today) */}
+            {/* Exchange Filter */}
             <select
               value={exchange}
               onChange={(e) => {
@@ -213,10 +361,75 @@ export default function DealsExplorer() {
               ))}
             </select>
 
-            <button type="submit" className="btn-secondary text-xs py-1.5 px-3.5">
+            {/* Net Buy Only Toggle Button */}
+            <label
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer select-none transition-all duration-200 border ${
+                netBuyOnly
+                  ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-700 dark:text-emerald-400 shadow-sm shadow-emerald-500/10'
+                  : 'glass-input text-slate-700 dark:text-slate-300 hover:border-slate-400 dark:hover:border-white/20'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={netBuyOnly}
+                onChange={(e) => {
+                  setNetBuyOnly(e.target.checked);
+                  setPage(1);
+                }}
+                className="rounded border-slate-300 dark:border-slate-600 text-emerald-500 focus:ring-emerald-500 w-3.5 h-3.5"
+              />
+              <span>Net Buy Only</span>
+            </label>
+
+            {/* Date Range Dropdown */}
+            <div className="relative">
+              <select
+                value={datePreset}
+                onChange={(e) => handleDatePresetChange(e.target.value)}
+                className="glass-input text-xs py-1.5 font-medium pr-7"
+              >
+                <option value="all">Date Range (All)</option>
+                <option value="today">Today</option>
+                <option value="7d">Last 7 Days</option>
+                <option value="30d">Last 30 Days</option>
+                <option value="90d">Last 90 Days</option>
+                <option value="custom">Custom Range...</option>
+              </select>
+            </div>
+
+            {/* Sort Dropdown */}
+            <select
+              value={sortOption}
+              onChange={(e) => {
+                setSortOption(e.target.value);
+                setPage(1);
+              }}
+              className="glass-input text-xs py-1.5 font-medium"
+            >
+              <option value="date_desc">Date: Newest → Oldest</option>
+              <option value="date_asc">Date: Oldest → Newest</option>
+              <option value="value_desc">Deal Value: High → Low</option>
+              <option value="value_asc">Deal Value: Low → High</option>
+            </select>
+
+            {/* Filter Submit Button */}
+            <button type="submit" className="btn-secondary text-xs py-1.5 px-3.5 font-medium">
               Filter
             </button>
 
+            {/* Clear / Reset Filters */}
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1 text-slate-500 hover:text-rose-500 dark:text-slate-400 dark:hover:text-rose-400"
+                title="Clear all filters"
+              >
+                <RotateCcw className="w-3 h-3" /> Clear
+              </button>
+            )}
+
+            {/* Refresh Button */}
             <button
               type="button"
               onClick={() => {
@@ -230,6 +443,58 @@ export default function DealsExplorer() {
             </button>
           </form>
         </div>
+
+        {/* Custom Date Range Picker Modal / Popover */}
+        {showCustomDateModal && (
+          <div className="mb-5 p-4 rounded-xl glass-panel border border-cyan-500/30 bg-slate-100/90 dark:bg-[#0c1322]/90 flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+              <Calendar className="w-4 h-4 text-cyan-500" />
+              <span>Select Custom Date Range:</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] text-slate-500">From:</label>
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="glass-input text-xs py-1 px-2 font-mono"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] text-slate-500">To:</label>
+              <input
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="glass-input text-xs py-1 px-2 font-mono"
+              />
+            </div>
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                type="button"
+                onClick={applyCustomDateRange}
+                className="btn-primary text-xs py-1 px-3.5"
+              >
+                Apply Range
+              </button>
+              <button
+                type="button"
+                onClick={clearCustomDateRange}
+                className="btn-secondary text-xs py-1 px-2.5"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCustomDateModal(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Table */}
         <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-white/[0.06]">
@@ -245,6 +510,11 @@ export default function DealsExplorer() {
                 <th className="py-3 px-3.5 text-right">Quantity</th>
                 <th className="py-3 px-3.5 text-right">Price (₹)</th>
                 <th className="py-3 px-3.5 text-right">Turnover</th>
+                {netBuyOnly && (
+                  <th className="py-3 px-3.5 text-right text-emerald-600 dark:text-emerald-400 bg-emerald-500/5">
+                    Net Buy Value
+                  </th>
+                )}
                 <th className="py-3 px-3.5">Execution Mode</th>
                 <th className="py-3 px-3.5 text-right">1D</th>
                 <th className="py-3 px-3.5 text-right">5D</th>
@@ -254,7 +524,7 @@ export default function DealsExplorer() {
             <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.04] font-mono">
               {loading ? (
                 <tr>
-                  <td colSpan="13" className="py-14 text-center text-slate-500 dark:text-slate-400 font-sans">
+                  <td colSpan={netBuyOnly ? "14" : "13"} className="py-14 text-center text-slate-500 dark:text-slate-400 font-sans">
                     <div className="flex items-center justify-center gap-2.5">
                       <span className="w-4 h-4 border-2 border-cyan-500 dark:border-cyan-400 border-t-transparent rounded-full animate-spin" />
                       Loading market transactions...
@@ -263,7 +533,7 @@ export default function DealsExplorer() {
                 </tr>
               ) : deals.length === 0 ? (
                 <tr>
-                  <td colSpan="13" className="py-14 text-center text-slate-500 font-sans">
+                  <td colSpan={netBuyOnly ? "14" : "13"} className="py-14 text-center text-slate-500 font-sans">
                     No transactions found matching your filters.
                   </td>
                 </tr>
@@ -316,6 +586,15 @@ export default function DealsExplorer() {
                             : (Number(d.total_value) / 100000).toFixed(2) + ' L')}`
                         : '-'}
                     </td>
+                    {netBuyOnly && (
+                      <td className="py-3 px-3.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/5">
+                        {d.net_buy_value !== null && d.net_buy_value !== undefined
+                          ? `+₹${(Number(d.net_buy_value) >= 10000000
+                              ? (Number(d.net_buy_value) / 10000000).toFixed(2) + ' Cr'
+                              : (Number(d.net_buy_value) / 100000).toFixed(2) + ' L')}`
+                          : '—'}
+                      </td>
+                    )}
                     <td className="py-3 px-3.5 font-sans text-slate-600 dark:text-slate-400 text-[11px] truncate max-w-[130px]">
                       {d.mode_description || '-'}
                     </td>
@@ -333,7 +612,7 @@ export default function DealsExplorer() {
         {totalPages > 1 && (
           <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-white/[0.08] mt-4 text-xs">
             <div className="text-slate-500 dark:text-slate-400 font-mono">
-              Page <span className="text-slate-900 dark:text-white font-bold">{page}</span> of {totalPages} ({totalCount} total)
+              Page <span className="text-slate-900 dark:text-white font-bold">{page}</span> of {totalPages} ({totalCount.toLocaleString()} total)
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -361,4 +640,5 @@ export default function DealsExplorer() {
     </div>
   );
 }
+
 
