@@ -214,6 +214,8 @@ export default function DateRangeBacktester() {
     }
   };
 
+  const [expandedRowKey, setExpandedRowKey] = useState(null);
+
   // Deals Filtering and Sorting
   const filteredDeals = useMemo(() => {
     if (!runData?.deals) return [];
@@ -225,7 +227,8 @@ export default function DateRangeBacktester() {
         (d) =>
           d.security_name?.toLowerCase().includes(q) ||
           d.nse_symbol?.toLowerCase().includes(q) ||
-          d.promoter_client?.toLowerCase().includes(q)
+          d.company_name?.toLowerCase().includes(q) ||
+          d.underlying_deals?.some((u) => u.client_name?.toLowerCase().includes(q))
       );
     }
 
@@ -258,6 +261,11 @@ export default function DateRangeBacktester() {
     return items;
   }, [runData?.deals, tableSearch, tableCategory, tableAction, tableReturnFilter, sortField, sortDir]);
 
+  // Total underlying transactions in filtered set
+  const filteredTransactionsCount = useMemo(() => {
+    return filteredDeals.reduce((sum, d) => sum + (d.transaction_count || 1), 0);
+  }, [filteredDeals]);
+
   // Paginated Deals
   const totalPages = Math.ceil(filteredDeals.length / pageSize) || 1;
   const paginatedDeals = useMemo(() => {
@@ -272,6 +280,10 @@ export default function DateRangeBacktester() {
       setSortField(field);
       setSortDir('desc');
     }
+  };
+
+  const toggleRowExpansion = (key) => {
+    setExpandedRowKey((prev) => (prev === key ? null : key));
   };
 
   const summary = runData?.summary;
@@ -799,11 +811,14 @@ export default function DateRangeBacktester() {
           <div className="glass-panel p-6 rounded-2xl space-y-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
-                <h3 className="text-sm font-extrabold text-slate-900 dark:text-white tracking-tight">
-                  Backtest Deal Results ({filteredDeals.length.toLocaleString()} Deals)
+                <h3 className="text-sm font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                  <span>Backtest Signals ({filteredDeals.length.toLocaleString()} Signals)</span>
+                  <span className="text-xs font-mono font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 rounded-md">
+                    {filteredTransactionsCount.toLocaleString()} Underlying Transactions
+                  </span>
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Deal-by-deal subsequent returns computed from NSE EOD price history.
+                  Consolidated by Symbol + Date + Deal Type. Underlying transactions can be expanded via <strong className="text-cyan-600 dark:text-cyan-400">View Deals</strong>.
                 </p>
               </div>
 
@@ -813,7 +828,7 @@ export default function DateRangeBacktester() {
                   <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Search security or symbol..."
+                    placeholder="Search security, symbol, client..."
                     value={tableSearch}
                     onChange={(e) => { setTableSearch(e.target.value); setPage(1); }}
                     className="glass-input w-full pl-8 py-1.5 text-xs"
@@ -837,9 +852,10 @@ export default function DateRangeBacktester() {
                   onChange={(e) => { setTableAction(e.target.value); setPage(1); }}
                   className="glass-input py-1.5 px-2.5 text-xs cursor-pointer"
                 >
-                  <option value="ALL">BUY & SELL</option>
-                  <option value="BUY">BUY Only</option>
-                  <option value="SELL">SELL Only</option>
+                  <option value="ALL">All Actions</option>
+                  <option value="BUY">BUY Dominant</option>
+                  <option value="SELL">SELL Dominant</option>
+                  <option value="MIXED">MIXED (Neutral)</option>
                 </select>
 
                 <select
@@ -858,17 +874,25 @@ export default function DateRangeBacktester() {
                     onClick={() => handleExport('deals', 'csv')}
                     disabled={exporting}
                     className="btn-secondary py-1.5 px-2.5 text-xs font-bold flex items-center gap-1"
-                    title="Export Results to CSV"
+                    title="Export Consolidated Signals to CSV"
                   >
-                    <Download className="w-3.5 h-3.5" /> CSV
+                    <Download className="w-3.5 h-3.5" /> Signals CSV
                   </button>
                   <button
                     onClick={() => handleExport('deals', 'xlsx')}
                     disabled={exporting}
                     className="btn-secondary py-1.5 px-2.5 text-xs font-bold flex items-center gap-1 text-emerald-600 dark:text-emerald-400"
-                    title="Export Results to Excel"
+                    title="Export Consolidated Signals to Excel"
                   >
                     <FileSpreadsheet className="w-3.5 h-3.5" /> Excel
+                  </button>
+                  <button
+                    onClick={() => handleExport('transactions', 'csv')}
+                    disabled={exporting}
+                    className="btn-secondary py-1.5 px-2 text-xs font-medium flex items-center gap-1 text-slate-500"
+                    title="Export Raw Underlying Transactions to CSV"
+                  >
+                    Raw Txns
                   </button>
                 </div>
               </div>
@@ -879,8 +903,8 @@ export default function DateRangeBacktester() {
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-slate-100 dark:bg-[#0c1222] text-slate-700 dark:text-slate-400 uppercase text-[10px] tracking-wider select-none">
                   <tr>
-                    <th onClick={() => handleSort('deal_date')} className="py-2.5 px-3 cursor-pointer hover:text-cyan-500">
-                      Date {sortField === 'deal_date' && (sortDir === 'asc' ? '↑' : '↓')}
+                    <th onClick={() => handleSort('signal_date')} className="py-2.5 px-3 cursor-pointer hover:text-cyan-500">
+                      Date {sortField === 'signal_date' && (sortDir === 'asc' ? '↑' : '↓')}
                     </th>
                     <th onClick={() => handleSort('deal_type')} className="py-2.5 px-2 cursor-pointer hover:text-cyan-500">
                       Type
@@ -894,11 +918,20 @@ export default function DateRangeBacktester() {
                     <th onClick={() => handleSort('nse_symbol')} className="py-2.5 px-2 cursor-pointer hover:text-cyan-500">
                       Symbol
                     </th>
-                    <th onClick={() => handleSort('deal_value')} className="py-2.5 px-3 text-right cursor-pointer hover:text-cyan-500">
-                      Deal Value {sortField === 'deal_value' && (sortDir === 'asc' ? '↑' : '↓')}
+                    <th onClick={() => handleSort('transaction_count')} className="py-2.5 px-2 text-center cursor-pointer hover:text-cyan-500">
+                      Txns {sortField === 'transaction_count' && (sortDir === 'asc' ? '↑' : '↓')}
                     </th>
-                    <th onClick={() => handleSort('entry_price')} className="py-2.5 px-2 text-right cursor-pointer hover:text-cyan-500">
-                      Entry Price
+                    <th onClick={() => handleSort('total_deal_value')} className="py-2.5 px-3 text-right cursor-pointer hover:text-cyan-500">
+                      Total Value {sortField === 'total_deal_value' && (sortDir === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th onClick={() => handleSort('net_buy_value')} className="py-2.5 px-3 text-right cursor-pointer hover:text-cyan-500">
+                      Net Buy {sortField === 'net_buy_value' && (sortDir === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th onClick={() => handleSort('deal_price')} className="py-2.5 px-2 text-right cursor-pointer hover:text-cyan-500" title="Weighted Average Deal Price">
+                      Deal Price
+                    </th>
+                    <th onClick={() => handleSort('entry_price')} className="py-2.5 px-2 text-right cursor-pointer hover:text-cyan-500" title="NSE EOD Entry Price on Signal Date">
+                      EOD Entry
                     </th>
                     <th onClick={() => handleSort('raw_return_1d')} className="py-2.5 px-2 text-right cursor-pointer hover:text-cyan-500">
                       1D
@@ -924,51 +957,151 @@ export default function DateRangeBacktester() {
                 <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.04] font-mono">
                   {paginatedDeals.length === 0 ? (
                     <tr>
-                      <td colSpan={14} className="py-10 text-center text-xs text-slate-500">
+                      <td colSpan={17} className="py-10 text-center text-xs text-slate-500">
                         No deals match the selected criteria.
                       </td>
                     </tr>
                   ) : (
-                    paginatedDeals.map((d) => (
-                      <tr key={d.deal_id} className="hover:bg-slate-100/60 dark:hover:bg-white/[0.02]">
-                        <td className="py-2 px-3 text-slate-500 dark:text-slate-400">{d.deal_date}</td>
-                        <td className="py-2 px-2 font-sans font-bold text-slate-700 dark:text-slate-300 truncate max-w-[100px]">
-                          {d.deal_type}
-                        </td>
-                        <td className="py-2 px-2">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-black tracking-wide ${
-                            d.action === 'BUY'
-                              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                              : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
-                          }`}>
-                            {d.action}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 font-sans font-bold text-slate-900 dark:text-white max-w-[180px] truncate" title={d.security_name}>
-                          {d.security_name}
-                        </td>
-                        <td className="py-2 px-2 font-bold text-cyan-600 dark:text-cyan-400">
-                          {d.nse_symbol}
-                        </td>
-                        <td className="py-2 px-3 text-right text-slate-700 dark:text-slate-300 font-bold">
-                          {formatValue(d.deal_value)}
-                        </td>
-                        <td className="py-2 px-2 text-right">₹{d.entry_price?.toFixed(2)}</td>
-                        <td className="py-2 px-2 text-right"><ReturnCell value={d.raw_return_1d} /></td>
-                        <td className="py-2 px-2 text-right"><ReturnCell value={d.raw_return_5d} /></td>
-                        <td className="py-2 px-2 text-right"><ReturnCell value={d.raw_return_10d} /></td>
-                        <td className="py-2 px-2 text-right"><ReturnCell value={d.raw_return_20d} /></td>
-                        <td className="py-2 px-2 text-right"><ReturnCell value={d.raw_return_60d} /></td>
-                        <td className="py-2 px-3 text-right bg-cyan-500/5">
-                          <ReturnCell value={d.signal_return_20d} />
-                        </td>
-                        <td className="py-2 px-2 font-sans">
-                          <span className="badge-tag text-[10px] font-bold">
-                            {d.match_status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
+                    paginatedDeals.map((d) => {
+                      const rowKey = `${d.signal_date}_${d.nse_symbol}_${d.deal_type}`;
+                      const isExpanded = expandedRowKey === rowKey;
+                      return (
+                        <React.Fragment key={rowKey}>
+                          <tr className={`hover:bg-slate-100/60 dark:hover:bg-white/[0.02] ${isExpanded ? 'bg-cyan-500/5 dark:bg-cyan-500/10' : ''}`}>
+                            <td className="py-2 px-3 text-slate-500 dark:text-slate-400">{d.signal_date || d.deal_date}</td>
+                            <td className="py-2 px-2 font-sans font-bold text-slate-700 dark:text-slate-300 truncate max-w-[100px]">
+                              {d.deal_type}
+                            </td>
+                            <td className="py-2 px-2">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-black tracking-wide ${
+                                d.action === 'BUY'
+                                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                                  : d.action === 'SELL'
+                                  ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                                  : 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/30'
+                              }`}>
+                                {d.action}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 font-sans font-bold text-slate-900 dark:text-white max-w-[180px] truncate" title={d.security_name}>
+                              {d.security_name}
+                            </td>
+                            <td className="py-2 px-2 font-bold text-cyan-600 dark:text-cyan-400">
+                              {d.nse_symbol}
+                            </td>
+                            <td className="py-2 px-2 text-center">
+                              <button
+                                onClick={() => toggleRowExpansion(rowKey)}
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-all flex items-center justify-center gap-1 mx-auto ${
+                                  d.transaction_count > 1
+                                    ? 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-500/25 border border-cyan-500/30'
+                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                                }`}
+                                title="Click to view underlying transactions"
+                              >
+                                <span>{d.transaction_count || 1}</span>
+                                <span className="text-[9px] font-normal">{isExpanded ? '▲' : '▼'}</span>
+                              </button>
+                            </td>
+                            <td className="py-2 px-3 text-right text-slate-700 dark:text-slate-300 font-bold">
+                              {formatValue(d.total_deal_value || d.deal_value)}
+                            </td>
+                            <td className={`py-2 px-3 text-right font-bold ${
+                              d.net_buy_value > 0
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : d.net_buy_value < 0
+                                ? 'text-rose-600 dark:text-rose-400'
+                                : 'text-slate-500'
+                            }`}>
+                              {formatValue(d.net_buy_value)}
+                            </td>
+                            <td className="py-2 px-2 text-right text-slate-600 dark:text-slate-400">
+                              {d.deal_price ? `₹${d.deal_price.toFixed(2)}` : '—'}
+                            </td>
+                            <td className="py-2 px-2 text-right text-slate-900 dark:text-white font-bold">
+                              ₹{d.entry_price?.toFixed(2)}
+                            </td>
+                            <td className="py-2 px-2 text-right"><ReturnCell value={d.raw_return_1d} /></td>
+                            <td className="py-2 px-2 text-right"><ReturnCell value={d.raw_return_5d} /></td>
+                            <td className="py-2 px-2 text-right"><ReturnCell value={d.raw_return_10d} /></td>
+                            <td className="py-2 px-2 text-right"><ReturnCell value={d.raw_return_20d} /></td>
+                            <td className="py-2 px-2 text-right"><ReturnCell value={d.raw_return_60d} /></td>
+                            <td className="py-2 px-3 text-right bg-cyan-500/5 font-bold">
+                              <ReturnCell value={d.signal_return_20d} />
+                            </td>
+                            <td className="py-2 px-2 font-sans">
+                              <span className="badge-tag text-[10px] font-bold">
+                                {d.match_status}
+                              </span>
+                            </td>
+                          </tr>
+
+                          {/* Expandable Underlying Deals Sub-table */}
+                          {isExpanded && (
+                            <tr>
+                              <td colSpan={17} className="p-3 bg-slate-50/80 dark:bg-slate-900/60 border-y border-cyan-500/20">
+                                <div className="p-3 rounded-xl bg-white dark:bg-slate-950/80 border border-slate-200 dark:border-white/[0.08] space-y-2">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5 font-sans">
+                                      <span>🔍 Underlying Raw Deals ({d.underlying_deals?.length || 0})</span>
+                                      <span className="font-mono text-[11px] text-cyan-600 dark:text-cyan-400">
+                                        for {d.security_name} ({d.nse_symbol}) on {d.signal_date}
+                                      </span>
+                                    </span>
+                                    <span className="text-[11px] font-mono text-slate-500">
+                                      BUY: {d.buy_transaction_count || 0} ({formatValue(d.total_buy_value)}) · SELL: {d.sell_transaction_count || 0} ({formatValue(d.total_sell_value)})
+                                    </span>
+                                  </div>
+
+                                  <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-white/[0.06]">
+                                    <table className="w-full text-left text-[11px] font-mono border-collapse">
+                                      <thead className="bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400 uppercase text-[9px] tracking-wider">
+                                        <tr>
+                                          <th className="py-1.5 px-2">#</th>
+                                          <th className="py-1.5 px-2">Action</th>
+                                          <th className="py-1.5 px-3">Client / Promoter</th>
+                                          <th className="py-1.5 px-2 text-right">Quantity</th>
+                                          <th className="py-1.5 px-2 text-right">Trade Price</th>
+                                          <th className="py-1.5 px-3 text-right">Value</th>
+                                          <th className="py-1.5 px-2">Mode</th>
+                                          <th className="py-1.5 px-2">Exch</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.04]">
+                                        {(d.underlying_deals || []).map((ud, idx) => (
+                                          <tr key={ud.id || idx} className="hover:bg-slate-100/60 dark:hover:bg-white/[0.02]">
+                                            <td className="py-1.5 px-2 text-slate-400">{idx + 1}</td>
+                                            <td className="py-1.5 px-2">
+                                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
+                                                ud.action === 'BUY'
+                                                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                                                  : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                                              }`}>
+                                                {ud.action}
+                                              </span>
+                                            </td>
+                                            <td className="py-1.5 px-3 font-sans font-medium text-slate-900 dark:text-slate-200">
+                                              {ud.client_name || '—'}
+                                            </td>
+                                            <td className="py-1.5 px-2 text-right">{ud.quantity?.toLocaleString() || '—'}</td>
+                                            <td className="py-1.5 px-2 text-right">₹{ud.price?.toFixed(2) || '—'}</td>
+                                            <td className="py-1.5 px-3 text-right font-bold text-slate-800 dark:text-slate-200">
+                                              {formatValue(ud.total_value)}
+                                            </td>
+                                            <td className="py-1.5 px-2 text-slate-500 font-sans">{ud.mode_description || ud.deal_category}</td>
+                                            <td className="py-1.5 px-2 text-slate-500">{ud.exchange_name || 'NSE'}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -977,7 +1110,7 @@ export default function DateRangeBacktester() {
             {/* Pagination & Status Bar */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-3 border-t border-slate-200 dark:border-white/[0.08] text-xs">
               <div className="text-slate-500 font-mono text-[11px]">
-                Showing <strong>{filteredDeals.length > 0 ? (page - 1) * pageSize + 1 : 0}–{Math.min(page * pageSize, filteredDeals.length)}</strong> of <strong>{filteredDeals.length.toLocaleString()}</strong> eligible deals
+                Showing <strong>{filteredDeals.length > 0 ? (page - 1) * pageSize + 1 : 0}–{Math.min(page * pageSize, filteredDeals.length)}</strong> of <strong>{filteredDeals.length.toLocaleString()}</strong> signals ({filteredTransactionsCount.toLocaleString()} raw transactions)
               </div>
 
               {totalPages > 1 && (
