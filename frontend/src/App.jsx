@@ -12,10 +12,12 @@ import InsiderConviction from './components/InsiderConviction';
 import SmartScreener from './components/SmartScreener';
 import SymbolMatching from './components/SymbolMatching';
 import AlertsPanel from './components/AlertsPanel';
+import DateRangeBacktester from './components/DateRangeBacktester';
 import { api } from './services/api';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('backtest');
+  const [backtestMode, setBacktestMode] = useState('date_range'); // 'date_range' | 'portfolio'
   const [systemStatus, setSystemStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
@@ -121,48 +123,87 @@ export default function App() {
         {/* Tab 1: Quantitative Backtest Lab */}
         {activeTab === 'backtest' && (
           <div className="space-y-6">
-            {error && (
-              <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-medium">
-                {error}
+            {/* Mode Switcher */}
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2 bg-slate-200/60 dark:bg-slate-800/80 p-1 rounded-xl">
+                <button
+                  onClick={() => setBacktestMode('date_range')}
+                  className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
+                    backtestMode === 'date_range'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  ⚡ Full Deal Signals (Date Range)
+                </button>
+                <button
+                  onClick={() => setBacktestMode('portfolio')}
+                  className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
+                    backtestMode === 'portfolio'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  📈 Portfolio Strategy Simulator
+                </button>
               </div>
-            )}
-
-            {/* Symbol Mapping Warning */}
-            {results?.symbol_mapping_audit && (results.symbol_mapping_audit.excluded_low_confidence > 0 || results.symbol_mapping_audit.excluded_unmatched > 0) && (
-              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs">
-                <div className="font-bold text-amber-700 dark:text-amber-400 mb-1">
-                  ⚠ SYMBOL MAPPING WARNING — {results.symbol_mapping_audit.excluded_low_confidence + results.symbol_mapping_audit.excluded_unmatched} of {results.symbol_mapping_audit.total_transactions} transactions have unresolved symbols
-                </div>
-                <div className="text-amber-700/80 dark:text-amber-400/80 font-mono text-[11px]">
-                  {results.symbol_mapping_audit.excluded_low_confidence} LOW_CONFIDENCE · {results.symbol_mapping_audit.excluded_unmatched} UNMATCHED — excluded from this backtest (never silently used)
-                </div>
-              </div>
-            )}
-
-            {/* Top Metric Cards */}
-            {results && <MetricCards summary={results.summary} />}
-
-            {/* Backtest Strategy Controls & Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              <div className="lg:col-span-4">
-                <BacktestConfigForm
-                  config={config}
-                  setConfig={setConfig}
-                  onRunBacktest={handleRunBacktest}
-                  loading={loading}
-                />
-              </div>
-
-              <div className="lg:col-span-8 space-y-6">
-                <EquityCurveChart data={results?.equity_curve} theme={theme} />
-                {results?.equity_curve && results.equity_curve.length > 0 && (
-                  <DrawdownChart data={results.equity_curve} theme={theme} />
-                )}
+              <div className="text-xs text-slate-500 hidden sm:block">
+                {backtestMode === 'date_range'
+                  ? 'Calculates multi-horizon returns (1D, 5D, 10D, 20D, 60D) for 100% of historical deals'
+                  : 'Simulates fixed capital allocation, position sizing, stop-loss & equity curves'}
               </div>
             </div>
 
-            {/* Trade Log Execution Table */}
-            {results?.trades && <TradeLogTable trades={results.trades} />}
+            {/* Date Range Full Deal Backtest */}
+            {backtestMode === 'date_range' && <DateRangeBacktester />}
+
+            {/* Portfolio Simulator Backtest */}
+            {backtestMode === 'portfolio' && (
+              <div className="space-y-6">
+                {error && (
+                  <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-medium">
+                    {error}
+                  </div>
+                )}
+
+                {/* Symbol Mapping Warning */}
+                {results?.symbol_mapping_audit && (results.symbol_mapping_audit.excluded_low_confidence > 0 || results.symbol_mapping_audit.excluded_unmatched > 0) && (
+                  <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs">
+                    <div className="font-bold text-amber-700 dark:text-amber-400 mb-1">
+                      ⚠ SYMBOL MAPPING WARNING — {results.symbol_mapping_audit.excluded_low_confidence + results.symbol_mapping_audit.excluded_unmatched} of {results.symbol_mapping_audit.total_transactions} transactions have unresolved symbols
+                    </div>
+                    <div className="text-amber-700/80 dark:text-amber-400/80 font-mono text-[11px]">
+                      {results.symbol_mapping_audit.excluded_low_confidence} LOW_CONFIDENCE · {results.symbol_mapping_audit.excluded_unmatched} UNMATCHED — excluded from this backtest (never silently used)
+                    </div>
+                  </div>
+                )}
+
+                {/* Top Metric Cards */}
+                {results && <MetricCards summary={results.summary} />}
+
+                {/* Backtest Strategy Controls & Charts */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  <div className="lg:col-span-4">
+                    <BacktestConfigForm
+                      config={config}
+                      setConfig={setConfig}
+                      onRunBacktest={handleRunBacktest}
+                      loading={loading}
+                    />
+                  </div>
+
+                  <div className="lg:col-span-8 space-y-6">
+                    <EquityCurveChart data={results?.equity_curve} theme={theme} />
+                    {results?.equity_curve && results.equity_curve.length > 0 && (
+                      <DrawdownChart data={results.equity_curve} theme={theme} />
+                    )}
+                  </div>
+                </div>
+
+                {/* Trade Log Execution Table */}
+                {results?.trades && <TradeLogTable trades={results.trades} />}
+              </div>
+            )}
           </div>
         )}
 

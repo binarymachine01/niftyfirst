@@ -21,6 +21,51 @@ export const api = {
     return response.data;
   },
 
+  getBacktestDataAvailability: async () => {
+    const response = await client.get('/api/backtest/data-availability');
+    return response.data;
+  },
+
+  runDateRangeBacktest: async (params) => {
+    const response = await client.post('/api/backtest/run-date-range', params);
+    return response.data;
+  },
+
+  getBacktestRuns: async (limit = 20) => {
+    const response = await client.get('/api/backtest/runs', { params: { limit } });
+    return response.data;
+  },
+
+  getBacktestRun: async (runId) => {
+    const response = await client.get(`/api/backtest/runs/${runId}`);
+    return response.data;
+  },
+
+  downloadBacktestExport: async (runId, type = 'deals', format = 'csv') => {
+    const response = await client.get(`/api/backtest/runs/${runId}/export`, {
+      params: { export_type: type, format },
+      responseType: 'blob',
+    });
+    const disposition = response.headers['content-disposition'] || '';
+    let filename = `backtest_${type}_${runId}.${format === 'excel' || format === 'xlsx' ? 'xlsx' : 'csv'}`;
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    if (match && match[1]) {
+      filename = match[1];
+    }
+    const blob = new Blob([response.data], {
+      type: response.headers['content-type'] || 'application/octet-stream',
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+    return filename;
+  },
+
   // Deals
   getDeals: async (params = {}) => {
     const response = await client.get('/api/deals', { params });
