@@ -1,23 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import Navbar from './components/Navbar';
-import BacktestConfigForm from './components/BacktestConfigForm';
-import MetricCards from './components/MetricCards';
-import EquityCurveChart from './components/EquityCurveChart';
-import DrawdownChart from './components/DrawdownChart';
-import TradeLogTable from './components/TradeLogTable';
-import DealsExplorer from './components/DealsExplorer';
-import StockInspector from './components/StockInspector';
-import SystemStatus from './components/SystemStatus';
-import InsiderConviction from './components/InsiderConviction';
-import SmartScreener from './components/SmartScreener';
-import SymbolMatching from './components/SymbolMatching';
-import AlertsPanel from './components/AlertsPanel';
-import DateRangeBacktester from './components/DateRangeBacktester';
-import { api } from './services/api';
+import TopHeader from '@/components/layout/TopHeader';
+import AppSidebar from '@/components/layout/AppSidebar';
+import Dashboard from '@/components/Dashboard';
+import DateRangeBacktester from '@/components/DateRangeBacktester';
+import BacktestConfigForm from '@/components/BacktestConfigForm';
+import MetricCards from '@/components/MetricCards';
+import EquityCurveChart from '@/components/EquityCurveChart';
+import DrawdownChart from '@/components/DrawdownChart';
+import TradeLogTable from '@/components/TradeLogTable';
+import DealsExplorer from '@/components/DealsExplorer';
+import StockInspector from '@/components/StockInspector';
+import SystemStatus from '@/components/SystemStatus';
+import InsiderConviction from '@/components/InsiderConviction';
+import SmartScreener from '@/components/SmartScreener';
+import SymbolMatching from '@/components/SymbolMatching';
+import AlertsPanel from '@/components/AlertsPanel';
+import { Toaster } from '@/components/ui/sonner';
+import { Button } from '@/components/ui/button';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { AlertTriangle, Zap, TrendingUp } from 'lucide-react';
+import { api } from '@/services/api';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('backtest');
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [backtestMode, setBacktestMode] = useState('date_range'); // 'date_range' | 'portfolio'
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   const [systemStatus, setSystemStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
@@ -25,14 +34,13 @@ export default function App() {
   const [convictionDeepLink, setConvictionDeepLink] = useState(null);
   const [alertsCount, setAlertsCount] = useState(0);
 
-  // Reused by the Smart Screener so a clicked stock opens the EXISTING
-  // Insider Conviction view instead of a duplicate stock-detail page.
+  // Deep-linking helper for Stock Inspector / Screener to Conviction Engine
   const handleInspectSymbol = (symbol) => {
     setConvictionDeepLink(symbol);
     setActiveTab('conviction');
   };
 
-  // Theme management: 'dark' | 'light'
+  // Theme management: 'dark' | 'light' (Dark preferred in quant finance)
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem('niftyfirst_theme');
     if (saved) return saved;
@@ -107,135 +115,159 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#080d1a] text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
-      {/* Header & Navbar */}
-      <Navbar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
+    <div className="min-h-screen bg-background text-foreground flex flex-col font-sans transition-colors duration-200">
+      {/* Top Application Header */}
+      <TopHeader
         systemStatus={systemStatus}
         alertsCount={alertsCount}
         theme={theme}
         onToggleTheme={toggleTheme}
+        onOpenMobileMenu={() => setMobileMenuOpen(true)}
+        onNavigateTab={setActiveTab}
+        activeTab={activeTab}
       />
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
-        {/* Tab 1: Quantitative Backtest Lab */}
-        {activeTab === 'backtest' && (
-          <div className="space-y-6">
-            {/* Mode Switcher */}
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-              <div className="flex items-center gap-2 bg-slate-200/60 dark:bg-slate-800/80 p-1 rounded-xl">
-                <button
-                  onClick={() => setBacktestMode('date_range')}
-                  className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
-                    backtestMode === 'date_range'
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  ⚡ Full Deal Signals (Date Range)
-                </button>
-                <button
-                  onClick={() => setBacktestMode('portfolio')}
-                  className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
-                    backtestMode === 'portfolio'
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  📈 Portfolio Strategy Simulator
-                </button>
-              </div>
-              <div className="text-xs text-slate-500 hidden sm:block">
-                {backtestMode === 'date_range'
-                  ? 'Calculates multi-horizon returns (1D, 5D, 10D, 20D, 60D) for 100% of historical deals'
-                  : 'Simulates fixed capital allocation, position sizing, stop-loss & equity curves'}
-              </div>
-            </div>
+      {/* Main Workspace: Sidebar + Content Area */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Institutional Collapsible Sidebar */}
+        <AppSidebar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={() => setSidebarCollapsed(!sidebarCollapsed)}
+          mobileOpen={mobileMenuOpen}
+          onMobileOpenChange={setMobileMenuOpen}
+          alertsCount={alertsCount}
+        />
 
-            {/* Date Range Full Deal Backtest */}
-            {backtestMode === 'date_range' && <DateRangeBacktester />}
+        {/* Content Container */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6">
+          {/* Tab 0: Executive Dashboard */}
+          {activeTab === 'dashboard' && (
+            <Dashboard onNavigateTab={setActiveTab} systemStatus={systemStatus} />
+          )}
 
-            {/* Portfolio Simulator Backtest */}
-            {backtestMode === 'portfolio' && (
-              <div className="space-y-6">
-                {error && (
-                  <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-medium">
-                    {error}
-                  </div>
-                )}
-
-                {/* Symbol Mapping Warning */}
-                {results?.symbol_mapping_audit && (results.symbol_mapping_audit.excluded_low_confidence > 0 || results.symbol_mapping_audit.excluded_unmatched > 0) && (
-                  <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs">
-                    <div className="font-bold text-amber-700 dark:text-amber-400 mb-1">
-                      ⚠ SYMBOL MAPPING WARNING — {results.symbol_mapping_audit.excluded_low_confidence + results.symbol_mapping_audit.excluded_unmatched} of {results.symbol_mapping_audit.total_transactions} transactions have unresolved symbols
-                    </div>
-                    <div className="text-amber-700/80 dark:text-amber-400/80 font-mono text-[11px]">
-                      {results.symbol_mapping_audit.excluded_low_confidence} LOW_CONFIDENCE · {results.symbol_mapping_audit.excluded_unmatched} UNMATCHED — excluded from this backtest (never silently used)
-                    </div>
-                  </div>
-                )}
-
-                {/* Top Metric Cards */}
-                {results && <MetricCards summary={results.summary} />}
-
-                {/* Backtest Strategy Controls & Charts */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                  <div className="lg:col-span-4">
-                    <BacktestConfigForm
-                      config={config}
-                      setConfig={setConfig}
-                      onRunBacktest={handleRunBacktest}
-                      loading={loading}
-                    />
-                  </div>
-
-                  <div className="lg:col-span-8 space-y-6">
-                    <EquityCurveChart data={results?.equity_curve} theme={theme} />
-                    {results?.equity_curve && results.equity_curve.length > 0 && (
-                      <DrawdownChart data={results.equity_curve} theme={theme} />
-                    )}
-                  </div>
+          {/* Tab 1: Quantitative Backtest Lab */}
+          {activeTab === 'backtest' && (
+            <div className="space-y-6">
+              {/* Backtest Mode Selector */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-border/80">
+                <div className="flex items-center gap-1.5 p-1 rounded-lg bg-muted border border-border/60">
+                  <Button
+                    size="sm"
+                    variant={backtestMode === 'date_range' ? 'default' : 'ghost'}
+                    onClick={() => setBacktestMode('date_range')}
+                    className="gap-1.5 text-xs font-semibold"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    Full Deal Signals (Date Range)
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={backtestMode === 'portfolio' ? 'default' : 'ghost'}
+                    onClick={() => setBacktestMode('portfolio')}
+                    className="gap-1.5 text-xs font-semibold"
+                  >
+                    <TrendingUp className="w-3.5 h-3.5" />
+                    Portfolio Strategy Simulator
+                  </Button>
                 </div>
-
-                {/* Trade Log Execution Table */}
-                {results?.trades && <TradeLogTable trades={results.trades} />}
+                <div className="text-xs text-muted-foreground font-mono">
+                  {backtestMode === 'date_range'
+                    ? '1D · 5D · 10D · 20D · 60D forward returns across historical deals'
+                    : 'Fixed capital simulation, equity curves & trade logs'}
+                </div>
               </div>
-            )}
-          </div>
-        )}
 
-        {/* Tab 2: Smart Screener */}
-        {activeTab === 'screener' && <SmartScreener onInspectSymbol={handleInspectSymbol} />}
+              {/* Date Range Full Deal Backtest */}
+              {backtestMode === 'date_range' && <DateRangeBacktester />}
 
-        {/* Tab 3: Deals Explorer */}
-        {activeTab === 'deals' && <DealsExplorer />}
+              {/* Portfolio Simulator Backtest */}
+              {backtestMode === 'portfolio' && (
+                <div className="space-y-6">
+                  {error && (
+                    <Alert variant="destructive">
+                      <AlertTriangle className="w-4 h-4" />
+                      <AlertTitle>Simulation Error</AlertTitle>
+                      <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                  )}
 
-        {/* Tab 4: Stock Inspector / Intelligence */}
-        {activeTab === 'stocks' && <StockInspector theme={theme} />}
+                  {/* Symbol Mapping Warning */}
+                  {results?.symbol_mapping_audit &&
+                    (results.symbol_mapping_audit.excluded_low_confidence > 0 ||
+                      results.symbol_mapping_audit.excluded_unmatched > 0) && (
+                      <Alert variant="warning">
+                        <AlertTriangle className="w-4 h-4" />
+                        <AlertTitle>
+                          Symbol Governance Exclusion —{' '}
+                          {results.symbol_mapping_audit.excluded_low_confidence +
+                            results.symbol_mapping_audit.excluded_unmatched}{' '}
+                          of {results.symbol_mapping_audit.total_transactions} transactions unresolved
+                        </AlertTitle>
+                        <AlertDescription className="font-mono text-[11px]">
+                          {results.symbol_mapping_audit.excluded_low_confidence} LOW_CONFIDENCE ·{' '}
+                          {results.symbol_mapping_audit.excluded_unmatched} UNMATCHED — excluded from returns calculation
+                        </AlertDescription>
+                      </Alert>
+                    )}
 
-        {/* Tab 5: Insider Conviction Engine */}
-        {activeTab === 'conviction' && <InsiderConviction initialSymbol={convictionDeepLink} />}
+                  {/* Top Metric Cards */}
+                  {results && <MetricCards summary={results.summary} />}
 
-        {/* Tab 6: Alerts & Saved Filters */}
-        {activeTab === 'alerts' && <AlertsPanel onMatchesRefreshed={setAlertsCount} />}
+                  {/* Backtest Strategy Controls & Charts */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    <div className="lg:col-span-4">
+                      <BacktestConfigForm
+                        config={config}
+                        setConfig={setConfig}
+                        onRunBacktest={handleRunBacktest}
+                        loading={loading}
+                      />
+                    </div>
 
-        {/* Tab 7: Symbol Matching Governance */}
-        {activeTab === 'symbol-matching' && <SymbolMatching />}
+                    <div className="lg:col-span-8 space-y-6">
+                      <EquityCurveChart data={results?.equity_curve} theme={theme} />
+                      {results?.equity_curve && results.equity_curve.length > 0 && (
+                        <DrawdownChart data={results.equity_curve} theme={theme} />
+                      )}
+                    </div>
+                  </div>
 
-        {/* Tab 8: System Health & Data Pipelines */}
-        {activeTab === 'system' && (
-          <SystemStatus systemStatus={systemStatus} onRefreshStatus={fetchStatus} />
-        )}
-      </main>
+                  {/* Trade Log Execution Table */}
+                  {results?.trades && <TradeLogTable trades={results.trades} />}
+                </div>
+              )}
+            </div>
+          )}
 
-      {/* Footer */}
-      <footer className="border-t border-slate-200 dark:border-white/5 py-6 text-center text-xs text-slate-500 dark:text-slate-500 font-mono transition-colors">
-        NiftyFirst Quantitative Market Data & Backtesting Suite
-      </footer>
+          {/* Tab 2: Smart Screener */}
+          {activeTab === 'screener' && <SmartScreener onInspectSymbol={handleInspectSymbol} />}
+
+          {/* Tab 3: Deals Explorer */}
+          {activeTab === 'deals' && <DealsExplorer />}
+
+          {/* Tab 4: Stock Inspector / Intelligence */}
+          {activeTab === 'stocks' && <StockInspector theme={theme} />}
+
+          {/* Tab 5: Insider Conviction Engine */}
+          {activeTab === 'conviction' && <InsiderConviction initialSymbol={convictionDeepLink} />}
+
+          {/* Tab 6: Alerts & Saved Filters */}
+          {activeTab === 'alerts' && <AlertsPanel onMatchesRefreshed={setAlertsCount} />}
+
+          {/* Tab 7: Symbol Matching Governance */}
+          {activeTab === 'symbol-matching' && <SymbolMatching />}
+
+          {/* Tab 8: System Health & Data Pipelines */}
+          {activeTab === 'system' && (
+            <SystemStatus systemStatus={systemStatus} onRefreshStatus={fetchStatus} />
+          )}
+        </main>
+      </div>
+
+      {/* Global Notifications Toaster */}
+      <Toaster position="bottom-right" richColors />
     </div>
   );
 }
-

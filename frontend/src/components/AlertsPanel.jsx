@@ -1,6 +1,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Bell, Plus, Trash2, CheckCheck, ChevronDown, ChevronUp, BellRing, RefreshCw } from 'lucide-react';
 import { api } from '../services/api';
+import { PageHeader } from './common/PageHeader';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './ui/card';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from './ui/table';
+import ClientDrilldownModal from './ClientDrilldownModal';
+import { cn } from '@/lib/utils';
 
 const CATEGORIES = ['Insider Trading', 'SAST Deals', 'Block Deals', 'Bulk Deals'];
 
@@ -20,6 +35,7 @@ export default function AlertsPanel({ onMatchesRefreshed }) {
   const [form, setForm] = useState({ name: '', category: '', action: '', min_value_lakhs: 0, keyword: '' });
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState(null);
+  const [selectedClient, setSelectedClient] = useState(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -90,190 +106,243 @@ export default function AlertsPanel({ onMatchesRefreshed }) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="glass-panel p-6 rounded-2xl">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2 tracking-tight">
-              <Bell className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
-              Saved Filters & Deal Alerts
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Save a deal pattern once and get flagged whenever a new matching disclosure lands
-              {totalNewAlerts > 0 && (
-                <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30 font-bold">
-                  <BellRing className="w-3 h-3" /> {totalNewAlerts} new
-                </span>
-              )}
-            </p>
-          </div>
-          <button onClick={refresh} className="btn-secondary p-2" title="Refresh">
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
+      <PageHeader
+        title="Saved Filters & Deal Alerts"
+        subtitle="Define recurring institutional filter rules and receive immediate notifications when matching disclosures appear"
+        badge={totalNewAlerts > 0 ? `${totalNewAlerts} New Alert${totalNewAlerts > 1 ? 's' : ''}` : 'Real-Time Scanner'}
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={refresh}
+          disabled={loading}
+          className="h-9 gap-1.5"
+        >
+          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+          <span>Refresh Feeds</span>
+        </Button>
+      </PageHeader>
 
-        {error && (
-          <div className="p-3 mb-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-medium">
-            {error}
-          </div>
-        )}
+      {/* Create Filter Card */}
+      <Card>
+        <CardHeader className="py-3 px-4 border-b border-border/60">
+          <CardTitle className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+            <Plus className="w-4 h-4 text-primary" /> Create New Surveillance Rule
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4">
+          {error && (
+            <div className="p-3 mb-4 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-xs font-medium">
+              {error}
+            </div>
+          )}
 
-        {/* Create Filter Form */}
-        <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-2.5 pt-2">
-          <div className="flex-1 min-w-[160px]">
-            <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1">Filter Name</label>
-            <input
-              type="text"
-              required
-              placeholder="e.g. Big Promoter Buys"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="glass-input w-full py-1.5 text-xs"
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1">Category</label>
-            <select
-              value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
-              className="glass-input text-xs py-1.5 font-medium"
-            >
-              <option value="">All Categories</option>
-              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1">Action</label>
-            <select
-              value={form.action}
-              onChange={(e) => setForm({ ...form, action: e.target.value })}
-              className="glass-input text-xs py-1.5 font-medium"
-            >
-              <option value="">Any</option>
-              <option value="BUY">BUY Only</option>
-              <option value="SELL">SELL Only</option>
-            </select>
-          </div>
-          <div className="w-28">
-            <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1">Min ₹ Lakhs</label>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={form.min_value_lakhs}
-              onChange={(e) => setForm({ ...form, min_value_lakhs: e.target.value })}
-              className="glass-input w-full py-1.5 text-xs"
-            />
-          </div>
-          <div className="flex-1 min-w-[140px]">
-            <label className="block text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1">Keyword</label>
-            <input
-              type="text"
-              placeholder="security or client name..."
-              value={form.keyword}
-              onChange={(e) => setForm({ ...form, keyword: e.target.value })}
-              className="glass-input w-full py-1.5 text-xs"
-            />
-          </div>
-          <button type="submit" disabled={creating} className="btn-primary text-xs py-2 px-4 disabled:opacity-50">
-            <Plus className="w-3.5 h-3.5" /> Save Filter
-          </button>
-        </form>
-      </div>
+          <form onSubmit={handleCreate} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
+            <div className="lg:col-span-2">
+              <label className="block text-[10px] uppercase font-bold text-muted-foreground mb-1">Filter Name *</label>
+              <Input
+                type="text"
+                required
+                placeholder="e.g. Promoter Buys > ₹1 Cr"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                className="h-9 text-xs"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-muted-foreground mb-1">Category</label>
+              <select
+                value={form.category}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="">All Categories</option>
+                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-muted-foreground mb-1">Action</label>
+              <select
+                value={form.action}
+                onChange={(e) => setForm({ ...form, action: e.target.value })}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="">Any Action</option>
+                <option value="BUY">BUY Only</option>
+                <option value="SELL">SELL Only</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-muted-foreground mb-1">Min ₹ Lakhs</label>
+              <Input
+                type="number"
+                min="0"
+                step="1"
+                value={form.min_value_lakhs}
+                onChange={(e) => setForm({ ...form, min_value_lakhs: e.target.value })}
+                className="h-9 font-mono text-xs"
+              />
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="block text-[10px] uppercase font-bold text-muted-foreground mb-1">Keyword</label>
+                <Input
+                  type="text"
+                  placeholder="ticker, client..."
+                  value={form.keyword}
+                  onChange={(e) => setForm({ ...form, keyword: e.target.value })}
+                  className="h-9 text-xs"
+                />
+              </div>
+              <Button type="submit" disabled={creating} className="h-9 px-4 mt-auto">
+                <Plus className="w-3.5 h-3.5 mr-1" /> Save
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
 
       {/* Saved Filters List */}
       {results.length === 0 ? (
-        <div className="glass-panel p-10 rounded-2xl text-center text-xs text-slate-500 dark:text-slate-400">
-          No saved filters yet. Create one above to start tracking deals that match your criteria.
-        </div>
+        <Card className="p-12 text-center text-xs text-muted-foreground">
+          No saved filter rules yet. Configure one above to start continuous deal surveillance.
+        </Card>
       ) : (
         <div className="space-y-4">
           {results.map((r) => {
             const f = r.filter;
             const isOpen = !!expanded[f.id];
             return (
-              <div key={f.id} className="glass-panel p-5 rounded-2xl">
-                <div className="flex items-center justify-between gap-4 flex-wrap">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-xl border ${r.new_since_last_check > 0 ? 'bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400' : 'bg-slate-100 dark:bg-white/[0.04] border-slate-200 dark:border-white/[0.08] text-cyan-600 dark:text-cyan-400'}`}>
-                      {r.new_since_last_check > 0 ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
-                    </div>
-                    <div>
-                      <div className="text-sm font-extrabold text-slate-900 dark:text-white">{f.name}</div>
-                      <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[10px]">
-                        <span className="badge-tag">{f.category || 'All Categories'}</span>
-                        {f.action && <span className={f.action === 'BUY' ? 'badge-buy' : 'badge-sell'}>{f.action}</span>}
-                        {f.min_value_lakhs > 0 && <span className="badge-tag">Min ₹{f.min_value_lakhs}L</span>}
-                        {f.keyword && <span className="badge-tag">"{f.keyword}"</span>}
+              <Card key={f.id} className={cn(r.new_since_last_check > 0 && 'border-primary/40 shadow-sm')}>
+                <CardHeader className="py-3 px-4 border-b border-border/60">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        'p-2 rounded-lg border flex items-center justify-center',
+                        r.new_since_last_check > 0 ? 'bg-destructive/10 border-destructive/30 text-destructive' : 'bg-muted border-border text-primary'
+                      )}>
+                        {r.new_since_last_check > 0 ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-foreground">{f.name}</div>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                          <Badge variant="outline" className="text-[10px]">{f.category || 'All Categories'}</Badge>
+                          {f.action && (
+                            <Badge variant={f.action === 'BUY' ? 'positive' : 'negative'} className="text-[10px]">
+                              {f.action}
+                            </Badge>
+                          )}
+                          {f.min_value_lakhs > 0 && <Badge variant="secondary" className="text-[10px]">Min ₹{f.min_value_lakhs}L</Badge>}
+                          {f.keyword && <Badge variant="secondary" className="text-[10px]">"{f.keyword}"</Badge>}
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <div className="text-lg font-black font-mono text-slate-900 dark:text-white">{r.total_matching}</div>
-                      <div className="text-[10px] uppercase text-slate-500 dark:text-slate-400 tracking-wider">Matching</div>
-                    </div>
-                    {r.new_since_last_check > 0 && (
+                    <div className="flex items-center gap-4">
                       <div className="text-right">
-                        <div className="text-lg font-black font-mono text-rose-600 dark:text-rose-400">{r.new_since_last_check}</div>
-                        <div className="text-[10px] uppercase text-slate-500 dark:text-slate-400 tracking-wider">New</div>
+                        <div className="text-lg font-black font-mono text-foreground">{r.total_matching}</div>
+                        <div className="text-[10px] uppercase text-muted-foreground tracking-wider">Total Match</div>
                       </div>
-                    )}
-                    <div className="flex items-center gap-1.5">
                       {r.new_since_last_check > 0 && (
-                        <button onClick={() => handleAcknowledge(f.id)} className="btn-secondary p-2" title="Mark as read">
-                          <CheckCheck className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="text-right">
+                          <div className="text-lg font-black font-mono text-destructive">{r.new_since_last_check}</div>
+                          <div className="text-[10px] uppercase text-muted-foreground tracking-wider">Unseen</div>
+                        </div>
                       )}
-                      <button onClick={() => toggleExpand(f.id)} className="btn-secondary p-2" title="Toggle matches">
-                        {isOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                      </button>
-                      <button onClick={() => handleDelete(f.id)} className="btn-secondary p-2 text-rose-600 dark:text-rose-400" title="Delete filter">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        {r.new_since_last_check > 0 && (
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8 text-positive"
+                            onClick={() => handleAcknowledge(f.id)}
+                            title="Mark as read"
+                          >
+                            <CheckCheck className="w-4 h-4" />
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => toggleExpand(f.id)}
+                          title="Toggle matches"
+                        >
+                          {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive"
+                          onClick={() => handleDelete(f.id)}
+                          title="Delete filter"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
+                </CardHeader>
 
                 {isOpen && (
-                  <div className="mt-4 pt-4 border-t border-slate-200 dark:border-white/[0.08] overflow-x-auto rounded-xl">
+                  <CardContent className="p-0">
                     {r.matches.length === 0 ? (
-                      <p className="text-xs text-slate-500 dark:text-slate-400 py-4 text-center">No matching deals yet.</p>
+                      <p className="text-xs text-muted-foreground py-6 text-center">No matching deals recorded yet.</p>
                     ) : (
-                      <table className="w-full text-left text-xs border-collapse">
-                        <thead className="bg-slate-100 dark:bg-[#0c1222] text-slate-700 dark:text-slate-400 uppercase text-[10px] tracking-wider">
-                          <tr>
-                            <th className="py-2 px-3">Date</th>
-                            <th className="py-2 px-3">Category</th>
-                            <th className="py-2 px-3">Security</th>
-                            <th className="py-2 px-3">Client</th>
-                            <th className="py-2 px-3">Action</th>
-                            <th className="py-2 px-3 text-right">Value</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.04] font-mono">
-                          {r.matches.map((m) => (
-                            <tr key={`${m.deal_category}-${m.id}`} className={m.is_new ? 'bg-rose-500/5' : ''}>
-                              <td className="py-2 px-3 text-slate-700 dark:text-slate-300">
-                                {m.is_new && <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-500 mr-1.5 align-middle" />}
-                                {m.trade_date}
-                              </td>
-                              <td className="py-2 px-3 font-sans"><span className="badge-tag">{m.deal_category}</span></td>
-                              <td className="py-2 px-3 font-sans text-slate-800 dark:text-slate-200">{m.security_name}</td>
-                              <td className="py-2 px-3 font-sans text-slate-600 dark:text-slate-400 truncate max-w-[150px]">{m.client_name || 'N/A'}</td>
-                              <td className="py-2 px-3 font-sans"><span className={m.action === 'BUY' ? 'badge-buy' : 'badge-sell'}>{m.action}</span></td>
-                              <td className="py-2 px-3 text-right text-cyan-700 dark:text-cyan-300 font-bold">{formatValue(m.total_value)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      <div className="overflow-x-auto max-h-80">
+                        <Table className="table-dense">
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Date</TableHead>
+                              <TableHead>Category</TableHead>
+                              <TableHead>Security</TableHead>
+                              <TableHead>Client</TableHead>
+                              <TableHead>Action</TableHead>
+                              <TableHead className="text-right">Quantity</TableHead>
+                              <TableHead className="text-right">Price</TableHead>
+                              <TableHead className="text-right">Value</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody className="font-mono">
+                            {r.matches.map((m) => (
+                              <TableRow key={`${m.deal_category}-${m.id}`} className={cn(m.is_new && 'bg-primary/5 font-semibold')}>
+                                <TableCell className="text-muted-foreground">{m.trade_date}</TableCell>
+                                <TableCell className="font-sans">
+                                  <Badge variant="outline" className="text-[10px]">{m.deal_category}</Badge>
+                                </TableCell>
+                                <TableCell className="font-sans font-bold text-foreground">{m.symbol || m.security_name}</TableCell>
+                                <TableCell className="font-sans text-foreground">
+                                  <button
+                                    onClick={() => setSelectedClient(m.client_name)}
+                                    className="font-bold hover:underline hover:text-primary transition-colors text-left"
+                                  >
+                                    {m.client_name}
+                                  </button>
+                                </TableCell>
+                                <TableCell className="font-sans">
+                                  <Badge variant={m.action === 'BUY' ? 'positive' : 'negative'} className="text-[10px]">
+                                    {m.action}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-right">{m.quantity ? Number(m.quantity).toLocaleString() : '-'}</TableCell>
+                                <TableCell className="text-right">{m.price ? `₹${Number(m.price).toFixed(2)}` : '-'}</TableCell>
+                                <TableCell className="text-right font-bold text-primary">{formatValue(m.total_value)}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
                     )}
-                  </div>
+                  </CardContent>
                 )}
-              </div>
+              </Card>
             );
           })}
         </div>
+      )}
+
+      {selectedClient && (
+        <ClientDrilldownModal clientName={selectedClient} onClose={() => setSelectedClient(null)} />
       )}
     </div>
   );

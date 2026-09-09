@@ -1,32 +1,54 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import PageHeader from '@/components/common/PageHeader';
+import EmptyState from '@/components/common/EmptyState';
+import LoadingState from '@/components/common/LoadingState';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import {
-  ShieldAlert, ShieldQuestion, Search, RefreshCw, CheckCircle2, XCircle, Link2, History, X, ChevronDown, ChevronUp,
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  ShieldAlert,
+  ShieldQuestion,
+  Search,
+  RefreshCw,
+  CheckCircle2,
+  XCircle,
+  Link2,
+  History,
   AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  X,
+  Check,
 } from 'lucide-react';
-import { api } from '../services/api';
-
-const STATUS_STYLES = {
-  MATCHED: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
-  LOW_CONFIDENCE: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30',
-  UNMATCHED: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30',
-  MANUAL_OVERRIDE: 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-cyan-500/30',
-};
+import { api } from '@/services/api';
+import { formatCrores } from '@/lib/utils';
+import { toast } from 'sonner';
 
 function StatusBadge({ status }) {
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[10px] font-black tracking-wide ${STATUS_STYLES[status] || STATUS_STYLES.UNMATCHED}`}>
-      {status?.replace('_', ' ') || 'N/A'}
-    </span>
-  );
-}
-
-function formatValue(v) {
-  if (v === null || v === undefined) return 'N/A';
-  const n = Number(v);
-  const abs = Math.abs(n);
-  if (abs >= 10000000) return `₹${(abs / 10000000).toFixed(2)} Cr`;
-  if (abs >= 100000) return `₹${(abs / 100000).toFixed(2)} L`;
-  return `₹${abs.toLocaleString('en-IN')}`;
+  const s = status?.toUpperCase();
+  if (s === 'MATCHED') return <Badge variant="positive">MATCHED</Badge>;
+  if (s === 'LOW_CONFIDENCE') return <Badge variant="warning">LOW CONFIDENCE</Badge>;
+  if (s === 'UNMATCHED') return <Badge variant="negative">UNMATCHED</Badge>;
+  if (s === 'MANUAL_OVERRIDE') return <Badge variant="override">MANUAL OVERRIDE</Badge>;
+  return <Badge variant="outline">{status || 'N/A'}</Badge>;
 }
 
 function MapModal({ item, onClose, onSaved }) {
@@ -38,7 +60,10 @@ function MapModal({ item, onClose, onSaved }) {
 
   useEffect(() => {
     if (!item.candidates || item.candidates.length === 0) {
-      api.getMatchCandidates(item.original_security_name).then((res) => setCandidates(res.candidates || [])).catch(() => {});
+      api
+        .getMatchCandidates(item.original_security_name)
+        .then((res) => setCandidates(res.candidates || []))
+        .catch(() => {});
     }
   }, [item]);
 
@@ -51,7 +76,11 @@ function MapModal({ item, onClose, onSaved }) {
     setSaving(true);
     setError(null);
     try {
-      await api.createSymbolMapping({ original_security_name: item.original_security_name, resolved_nse_symbol: symbol });
+      await api.createSymbolMapping({
+        original_security_name: item.original_security_name,
+        resolved_nse_symbol: symbol,
+      });
+      toast.success(`Mapped to NSE symbol ${symbol}`);
       onSaved();
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to save mapping.');
@@ -61,54 +90,82 @@ function MapModal({ item, onClose, onSaved }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-950/50 dark:bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="glass-panel relative w-full max-w-lg rounded-2xl p-6 shadow-2xl">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">Map Security to NSE Symbol</h3>
-          <button onClick={onClose} className="btn-secondary p-2"><X className="w-4 h-4" /></button>
-        </div>
-        <div className="text-xs text-slate-500 dark:text-slate-400 mb-4">{item.original_security_name}</div>
+    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Link2 className="w-4 h-4 text-primary" />
+            Map Security to NSE Symbol
+          </DialogTitle>
+          <DialogDescription className="font-mono text-xs">
+            {item.original_security_name}
+          </DialogDescription>
+        </DialogHeader>
 
-        {error && <div className="p-3 mb-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs">{error}</div>}
+        {error && (
+          <div className="p-3 rounded-md bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs">
+            {error}
+          </div>
+        )}
 
         {candidates.length > 0 && (
-          <div className="mb-4">
-            <div className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 tracking-wider mb-2">Candidates</div>
-            <div className="space-y-1.5">
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Automated Candidates
+            </Label>
+            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
               {candidates.map((c, i) => (
-                <label key={i} className="flex items-center justify-between px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 cursor-pointer hover:bg-slate-100 dark:hover:bg-white/5">
-                  <span className="flex items-center gap-2 text-xs">
-                    <input type="radio" name="candidate" checked={selectedSymbol === c.symbol && !customSymbol} onChange={() => { setSelectedSymbol(c.symbol); setCustomSymbol(''); }} />
-                    <span className="font-mono font-bold">{c.symbol}</span>
-                    <span className="text-slate-400 text-[10px]">{c.method}</span>
+                <div
+                  key={i}
+                  onClick={() => {
+                    setSelectedSymbol(c.symbol);
+                    setCustomSymbol('');
+                  }}
+                  className={`flex items-center justify-between p-2.5 rounded-md border text-xs cursor-pointer transition-all ${
+                    selectedSymbol === c.symbol && !customSymbol
+                      ? 'border-primary bg-primary/[0.08] font-bold text-foreground'
+                      : 'border-border bg-card hover:bg-muted/50 text-muted-foreground'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-bold text-foreground">{c.symbol}</span>
+                    <Badge variant="outline" className="text-[9px] px-1 py-0">
+                      {c.method}
+                    </Badge>
+                  </div>
+                  <span className="font-mono text-xs font-bold text-foreground">
+                    {(c.confidence * 100).toFixed(0)}% Match
                   </span>
-                  <span className="font-mono text-xs font-bold">{(c.confidence * 100).toFixed(0)}%</span>
-                </label>
+                </div>
               ))}
             </div>
           </div>
         )}
 
-        <div className="mb-4">
-          <label className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 tracking-wider mb-1.5 block">Or enter NSE symbol manually</label>
-          <input
+        <div className="space-y-1.5 pt-2">
+          <Label htmlFor="manual-symbol" className="text-xs">
+            Or Enter NSE Symbol Manually
+          </Label>
+          <Input
+            id="manual-symbol"
             type="text"
-            placeholder="e.g. RELIANCE"
+            placeholder="e.g. RELIANCE, TCS, INFY"
             value={customSymbol}
             onChange={(e) => setCustomSymbol(e.target.value.toUpperCase())}
-            className="glass-input w-full py-2 text-xs font-mono font-bold uppercase"
+            className="font-mono text-xs uppercase"
           />
         </div>
 
-        <div className="flex items-center gap-2.5">
-          <button onClick={handleSave} disabled={saving} className="btn-primary text-xs py-2 px-4 disabled:opacity-50">
-            {saving ? 'Saving...' : 'Save as Manual Override'}
-          </button>
-          <button onClick={onClose} className="btn-secondary text-xs py-2 px-4">Cancel</button>
-        </div>
-      </div>
-    </div>
+        <DialogFooter className="gap-2 sm:gap-0 pt-2">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving...' : 'Save Manual Override'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -122,14 +179,7 @@ export default function SymbolMatching() {
   const [expandedRow, setExpandedRow] = useState(null);
   const [history, setHistory] = useState({});
 
-  // Hard-validation banner (backend/routers/symbol_matcher.py:/validate) -
-  // any mapping whose resolved symbol isn't in the CURRENT NSE reference
-  // universe, surfaced but never auto-modified.
   const [validation, setValidation] = useState(null);
-
-  // Clear & Re-Match NSE Symbols - destructive (clears automatic mappings),
-  // gated behind an explicit "type CLEAR to confirm" modal, same pattern as
-  // System Health's Clear All Insider & Deal Data action.
   const [showRematchModal, setShowRematchModal] = useState(false);
   const [rematchConfirmText, setRematchConfirmText] = useState('');
   const [rematching, setRematching] = useState(false);
@@ -156,11 +206,16 @@ export default function SymbolMatching() {
       let res;
       if (activeTab === 'unmatched') res = await api.getUnmatchedSecurities(search);
       else if (activeTab === 'low_confidence') res = await api.getLowConfidenceSecurities(search);
-      else res = await api.getAllMappings({ search: search || undefined, status: activeTab === 'all' ? undefined : activeTab.toUpperCase() });
+      else
+        res = await api.getAllMappings({
+          search: search || undefined,
+          status: activeTab === 'all' ? undefined : activeTab.toUpperCase(),
+        });
       setRows(res.unmatched || res.low_confidence || res.mappings || []);
     } catch (err) {
       console.error('Failed to load symbol mappings:', err);
       setError('Failed to load symbol mapping data.');
+      toast.error('Failed to load symbol mapping data');
     } finally {
       setLoading(false);
     }
@@ -173,9 +228,11 @@ export default function SymbolMatching() {
   const handleRemoveOverride = async (mappingId) => {
     try {
       await api.removeSymbolMapping(mappingId);
+      toast.success('Manual override removed');
       fetchRows();
     } catch (err) {
       console.error('Failed to remove override:', err);
+      toast.error('Failed to remove override');
     }
   };
 
@@ -186,6 +243,7 @@ export default function SymbolMatching() {
       const res = await api.rematchSymbols(rematchConfirmText);
       setRematchResult(res);
       setRematchConfirmText('');
+      toast.success('Re-match complete');
       await fetchRows();
       await fetchValidation();
     } catch (err) {
@@ -228,260 +286,295 @@ export default function SymbolMatching() {
 
   return (
     <div className="space-y-6">
-      <div className="glass-panel p-6 rounded-2xl">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2 tracking-tight">
-              <ShieldAlert className="w-5 h-5 text-cyan-600 dark:text-cyan-400" /> Symbol Matching
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Review and manage how insider/deal security names resolve to NSE symbols. Only MATCHED and MANUAL_OVERRIDE
-              mappings are used for backtesting, Conviction scoring, screening, and Stock Intelligence.
-            </p>
-          </div>
-          <button
+      {/* Page Header */}
+      <PageHeader
+        title="Symbol Governance & Master Matching"
+        description="Verify and control how disclosed entity names resolve to NSE market symbols. Unmatched and Low Confidence records are strictly quarantined from backtesting."
+        badge="NSE Safety Gate"
+        actions={
+          <Button
+            variant="destructive"
+            size="sm"
             onClick={() => setShowRematchModal(true)}
-            className="btn-secondary py-2 px-3.5 text-xs font-bold text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 border-rose-500/30 flex-shrink-0"
+            className="gap-1.5 text-xs font-bold"
           >
-            Clear & Re-Match NSE Symbols
-          </button>
+            <RefreshCw className="w-3.5 h-3.5" />
+            Clear & Re-Match Symbols
+          </Button>
+        }
+      />
+
+      {/* Validation Alert */}
+      {validation && !validation.valid && (
+        <div className="p-3.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs flex items-center gap-2 font-semibold">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>
+            {validation.invalid_resolved_symbol_count} mapping(s) resolve to a symbol no longer in the active NSE universe. ({validation.invalid_manual_override_count} manual override(s) require review).
+          </span>
         </div>
+      )}
 
-        {validation && !validation.valid && (
-          <div className="mt-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2 font-semibold">
-            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-            {validation.invalid_resolved_symbol_count} mapping(s) resolve to a symbol no longer in the current NSE
-            reference universe ({validation.invalid_manual_override_count} manual override(s) need review) - run
-            Clear & Re-Match to rebuild automatic mappings.
-          </div>
-        )}
-      </div>
+      {/* Main Governance Workspace Card */}
+      <Card>
+        <CardHeader className="p-4 sm:p-5 border-b border-border/80">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            {/* Governance Status Navigation Tabs */}
+            <div className="flex items-center gap-1 p-1 rounded-lg bg-muted border border-border/60 overflow-x-auto">
+              {tabs.map((t) => {
+                const Icon = t.icon;
+                const isActive = activeTab === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => {
+                      setActiveTab(t.id);
+                      setExpandedRow(null);
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md cursor-pointer transition-all whitespace-nowrap ${
+                      isActive
+                        ? 'bg-card text-foreground shadow-xs font-bold'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    <span>{t.label}</span>
+                  </button>
+                );
+              })}
+            </div>
 
-      <div className="glass-panel p-6 rounded-2xl">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-5">
-          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-950/70 border border-slate-200 dark:border-white/[0.08] text-xs flex-wrap">
-            {tabs.map((t) => {
-              const Icon = t.icon;
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => setActiveTab(t.id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${activeTab === t.id ? 'bg-white dark:bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-slate-300 dark:border-cyan-500/40' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
-                >
-                  <Icon className="w-3.5 h-3.5" /> {t.label}
-                </button>
-              );
-            })}
-          </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <div className="relative flex-1 sm:w-56">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
+            {/* Search Input */}
+            <div className="relative w-full sm:w-56">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
                 type="text"
-                placeholder="Search security or symbol..."
+                placeholder="Search security name..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="glass-input w-full pl-8 py-1.5 text-xs"
+                className="pl-8 text-xs h-8"
               />
             </div>
-            <button onClick={fetchRows} className="btn-secondary p-2"><RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /></button>
           </div>
-        </div>
+        </CardHeader>
 
-        {error && <div className="p-3 mb-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs">{error}</div>}
-
-        {loading ? (
-          <div className="py-14 text-center text-xs text-slate-500 dark:text-slate-400">
-            <span className="w-4 h-4 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin inline-block mr-2 align-middle" /> Loading...
-          </div>
-        ) : rows.length === 0 ? (
-          <p className="text-xs text-slate-500 dark:text-slate-400 py-14 text-center">No securities in this view.</p>
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-white/[0.06]">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-slate-100 dark:bg-[#0c1222] text-slate-700 dark:text-slate-400 uppercase text-[10px] tracking-wider">
-                <tr>
-                  <th className="py-2.5 px-3">Security Name</th>
-                  <th className="py-2.5 px-3">Candidate Symbol</th>
-                  <th className="py-2.5 px-3">Exchange</th>
-                  <th className="py-2.5 px-3 text-right">Confidence</th>
-                  <th className="py-2.5 px-3">Method</th>
-                  <th className="py-2.5 px-3">Status</th>
-                  <th className="py-2.5 px-3 text-right">Deals</th>
-                  <th className="py-2.5 px-3">Latest Deal</th>
-                  <th className="py-2.5 px-3 text-right">Total Value</th>
-                  <th className="py-2.5 px-3"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.04] font-mono">
-                {rows.map((r) => (
-                  <React.Fragment key={r.mapping_id}>
-                    <tr className="hover:bg-slate-100/70 dark:hover:bg-white/[0.02]">
-                      <td className="py-2.5 px-3 font-sans font-bold text-slate-900 dark:text-white max-w-[220px] truncate" title={r.original_security_name}>{r.original_security_name}</td>
-                      <td className="py-2.5 px-3 font-bold">{r.resolved_nse_symbol || 'N/A'}</td>
-                      <td className="py-2.5 px-3 font-sans">
-                        {r.resolved_exchange ? (
-                          <span className="badge-tag">{r.resolved_exchange}</span>
-                        ) : r.resolved_nse_symbol ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-md border text-[10px] font-black tracking-wide bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30">
-                            UNKNOWN
-                          </span>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-right">{(r.match_confidence * 100).toFixed(0)}%</td>
-                      <td className="py-2.5 px-3 font-sans"><span className="badge-tag">{r.match_method}</span></td>
-                      <td className="py-2.5 px-3 font-sans"><StatusBadge status={r.match_status} /></td>
-                      <td className="py-2.5 px-3 text-right">{r.deal_count}</td>
-                      <td className="py-2.5 px-3 text-slate-500 dark:text-slate-400">{r.latest_deal_date || 'N/A'}</td>
-                      <td className="py-2.5 px-3 text-right text-cyan-700 dark:text-cyan-300 font-bold">{formatValue(r.total_transaction_value)}</td>
-                      <td className="py-2.5 px-3 font-sans">
-                        <div className="flex items-center gap-1.5 justify-end">
-                          {r.match_status !== 'MANUAL_OVERRIDE' && (
-                            <button onClick={() => setMappingTarget(r)} className="btn-secondary py-1 px-2 text-[10px]">Map</button>
-                          )}
-                          {r.match_status === 'MANUAL_OVERRIDE' && (
-                            <button onClick={() => handleRemoveOverride(r.mapping_id)} className="btn-secondary py-1 px-2 text-[10px] text-rose-600 dark:text-rose-400">Remove</button>
-                          )}
-                          <button onClick={() => toggleHistory(r)} className="btn-secondary p-1.5" title="History">
-                            {expandedRow === r.mapping_id ? <ChevronUp className="w-3 h-3" /> : <History className="w-3 h-3" />}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                    {expandedRow === r.mapping_id && (
-                      <tr className="bg-slate-50 dark:bg-white/[0.02]">
-                        <td colSpan={10} className="py-3 px-4 font-sans">
-                          {!history[r.mapping_id] || history[r.mapping_id].length === 0 ? (
-                            <p className="text-xs text-slate-500 dark:text-slate-400">No audit history for this mapping.</p>
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="p-6">
+              <LoadingState mode="table" rows={6} />
+            </div>
+          ) : rows.length === 0 ? (
+            <EmptyState
+              title={`No ${activeTab.replace('_', ' ')} securities found`}
+              description="All security disclosures have been evaluated according to the current governance rules."
+            />
+          ) : (
+            <div className="relative overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[220px]">Security Name (Filing)</TableHead>
+                    <TableHead className="w-36">NSE Symbol</TableHead>
+                    <TableHead className="w-28 text-right">Confidence</TableHead>
+                    <TableHead className="w-28">Method</TableHead>
+                    <TableHead className="w-36">Governance Status</TableHead>
+                    <TableHead className="text-right w-20">Deals</TableHead>
+                    <TableHead className="text-right w-28">Turnover</TableHead>
+                    <TableHead className="w-24">Last Deal</TableHead>
+                    <TableHead className="text-right w-36">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((row, idx) => (
+                    <React.Fragment key={row.mapping_id || row.original_security_name || idx}>
+                      <TableRow className="hover:bg-muted/40">
+                        <TableCell className="font-bold text-foreground text-xs font-sans">
+                          {row.original_security_name}
+                        </TableCell>
+                        <TableCell>
+                          {row.resolved_nse_symbol ? (
+                            <Badge variant="secondary" className="font-mono text-xs font-bold">
+                              {row.resolved_nse_symbol}
+                            </Badge>
                           ) : (
-                            <ul className="space-y-1.5 text-[11px]">
-                              {history[r.mapping_id].map((h, i) => (
-                                <li key={i} className="text-slate-600 dark:text-slate-400">
-                                  <span className="font-mono text-slate-400">{h.changed_at}</span> — {h.previous_symbol || 'N/A'} → <span className="font-bold text-slate-800 dark:text-slate-200">{h.new_symbol || 'REMOVED'}</span>
-                                  {' '}({h.previous_status || 'N/A'} → {h.new_status}) {h.changed_by ? `by ${h.changed_by}` : ''} {h.reason ? `— ${h.reason}` : ''}
-                                </li>
-                              ))}
-                            </ul>
+                            <span className="text-muted-foreground/60 text-xs">—</span>
                           )}
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs font-semibold">
+                          {row.confidence !== null && row.confidence !== undefined
+                            ? `${(Number(row.confidence) * 100).toFixed(0)}%`
+                            : '—'}
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-[11px] text-muted-foreground font-mono">
+                            {row.match_method || '—'}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge status={row.match_status} />
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs">
+                          {row.deal_count || row.deals_count || '—'}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs font-bold text-foreground">
+                          {formatCrores(row.total_value)}
+                        </TableCell>
+                        <TableCell className="font-mono text-[11px] text-muted-foreground">
+                          {row.last_deal_date || '—'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              onClick={() => setMappingTarget(row)}
+                              className="text-[11px] h-7 px-2"
+                            >
+                              Map
+                            </Button>
+                            {row.match_status === 'MANUAL_OVERRIDE' && (
+                              <Button
+                                size="xs"
+                                variant="ghost"
+                                onClick={() => handleRemoveOverride(row.mapping_id)}
+                                className="text-[11px] h-7 px-2 text-rose-600 hover:text-rose-700"
+                              >
+                                Revert
+                              </Button>
+                            )}
+                            {row.mapping_id && (
+                              <Button
+                                size="icon-sm"
+                                variant="ghost"
+                                onClick={() => toggleHistory(row)}
+                                title="Audit History"
+                              >
+                                <History className="w-3.5 h-3.5 text-muted-foreground" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
 
+                      {/* Expandable Audit History Row */}
+                      {expandedRow === row.mapping_id && (
+                        <TableRow className="bg-muted/20">
+                          <TableCell colSpan={9} className="p-4">
+                            <div className="space-y-2">
+                              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                Governance Audit History
+                              </span>
+                              {history[row.mapping_id]?.length > 0 ? (
+                                <div className="rounded-md border border-border overflow-hidden bg-card">
+                                  <Table>
+                                    <TableHeader>
+                                      <TableRow>
+                                        <TableHead>Timestamp</TableHead>
+                                        <TableHead>Old Symbol</TableHead>
+                                        <TableHead>New Symbol</TableHead>
+                                        <TableHead>User / Source</TableHead>
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                      {history[row.mapping_id].map((h, i) => (
+                                        <TableRow key={i}>
+                                          <TableCell className="font-mono text-xs text-muted-foreground">
+                                            {h.created_at}
+                                          </TableCell>
+                                          <TableCell className="font-mono text-xs">{h.old_symbol || '—'}</TableCell>
+                                          <TableCell className="font-mono text-xs font-bold text-foreground">
+                                            {h.new_symbol}
+                                          </TableCell>
+                                          <TableCell className="text-xs text-muted-foreground">
+                                            {h.changed_by || 'System'}
+                                          </TableCell>
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                </div>
+                              ) : (
+                                <p className="text-xs text-muted-foreground">No prior revisions recorded.</p>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Manual Map Dialog */}
       {mappingTarget && (
         <MapModal
           item={mappingTarget}
           onClose={() => setMappingTarget(null)}
-          onSaved={() => { setMappingTarget(null); fetchRows(); }}
+          onSaved={() => {
+            setMappingTarget(null);
+            fetchRows();
+            fetchValidation();
+          }}
         />
       )}
 
-      {showRematchModal && (
-        <div
-          className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="rematch-modal-title"
-        >
-          <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl overflow-hidden flex flex-col border border-rose-500/30 shadow-2xl">
-            <div className="p-5 border-b border-slate-200 dark:border-white/10 flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 flex-shrink-0">
-                <AlertTriangle className="w-5 h-5" />
+      {/* Clear & Re-Match Confirmation Dialog */}
+      <Dialog open={showRematchModal} onOpenChange={setShowRematchModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
+              <AlertTriangle className="w-4 h-4" />
+              Clear & Re-Match NSE Symbols
+            </DialogTitle>
+            <DialogDescription>
+              This action purges automated matches and re-runs the fuzzy matcher across all historical deals against the active NSE symbol master. Manual overrides will be preserved.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <Label htmlFor="confirm-clear" className="text-xs font-semibold">
+              Type <span className="font-mono font-bold text-rose-600 dark:text-rose-400">CLEAR</span> to confirm:
+            </Label>
+            <Input
+              id="confirm-clear"
+              type="text"
+              placeholder="CLEAR"
+              value={rematchConfirmText}
+              onChange={(e) => setRematchConfirmText(e.target.value)}
+              className="font-mono text-xs uppercase"
+            />
+
+            {rematchError && (
+              <div className="p-3 rounded-md bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs">
+                {rematchError}
               </div>
-              <h3 id="rematch-modal-title" className="text-sm font-extrabold text-slate-900 dark:text-white">
-                Re-match NSE Symbols
-              </h3>
-            </div>
+            )}
 
-            <div className="p-5 space-y-4 text-xs text-slate-600 dark:text-slate-400">
-              {rematchResult ? (
-                <div>
-                  <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold text-sm mb-3">
-                    <CheckCircle2 className="w-4 h-4" /> Re-match complete.
-                  </div>
-                  <div className="font-mono space-y-1 p-3 rounded-xl bg-slate-100 dark:bg-slate-950/60 border border-slate-200 dark:border-white/5">
-                    <div className="flex items-center justify-between"><span>Automatic mappings cleared:</span><span className="font-bold text-slate-800 dark:text-slate-200">{rematchResult.cleared_automatic_mappings}</span></div>
-                    <div className="flex items-center justify-between"><span>Securities re-processed:</span><span className="font-bold text-slate-800 dark:text-slate-200">{rematchResult.total_securities_processed}</span></div>
-                    {Object.entries(rematchResult.status_counts || {}).map(([status, count]) => (
-                      <div key={status} className="flex items-center justify-between">
-                        <span>{status.replace(/_/g, ' ')}:</span>
-                        <span className="font-bold text-slate-800 dark:text-slate-200">{count}</span>
-                      </div>
-                    ))}
-                    <div className="flex items-center justify-between pt-1.5 mt-1.5 border-t border-slate-200 dark:border-white/5">
-                      <span>Invalid resolved symbols remaining:</span>
-                      <span className={`font-bold ${rematchResult.invalid_resolved_symbol_count > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                        {rematchResult.invalid_resolved_symbol_count}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <p>
-                    This will clear existing <strong className="text-rose-600 dark:text-rose-400">automatic</strong> symbol
-                    matches and rebuild them using the current NSE security universe, restricted to enabled exchanges.
-                  </p>
-                  <p>
-                    Existing <strong className="text-slate-700 dark:text-slate-300">manual mappings will be preserved</strong> -
-                    this operation never deletes or modifies a manual override, even an invalid one (those are flagged
-                    for human review above, not auto-corrected).
-                  </p>
-                  <div className="pt-2">
-                    <label htmlFor="rematch-confirm-input" className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                      Type CLEAR to confirm:
-                    </label>
-                    <input
-                      id="rematch-confirm-input"
-                      type="text"
-                      autoFocus
-                      value={rematchConfirmText}
-                      onChange={(e) => setRematchConfirmText(e.target.value)}
-                      placeholder="CLEAR"
-                      disabled={rematching}
-                      className="glass-input w-full text-xs font-mono py-2"
-                    />
-                  </div>
-                  {rematchError && (
-                    <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 font-semibold">
-                      {rematchError}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            <div className="p-4 bg-slate-100/70 dark:bg-slate-950/50 border-t border-slate-200 dark:border-white/10 flex items-center justify-end gap-2.5">
-              {rematchResult ? (
-                <button onClick={closeRematchModal} className="btn-primary py-2 px-4 text-xs font-bold">
-                  Close
-                </button>
-              ) : (
-                <>
-                  <button onClick={closeRematchModal} disabled={rematching} className="btn-secondary py-2 px-4 text-xs font-bold disabled:opacity-50">
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleRematch}
-                    disabled={rematching || rematchConfirmText !== 'CLEAR'}
-                    className="btn-primary py-2 px-4 text-xs font-bold bg-rose-600 hover:bg-rose-700 border-rose-600 disabled:opacity-40"
-                  >
-                    {rematching ? 'Re-matching...' : 'Clear & Re-Match'}
-                  </button>
-                </>
-              )}
-            </div>
+            {rematchResult && (
+              <div className="p-3 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400 text-xs font-mono">
+                Re-matching complete: {rematchResult.matched_count || 0} matched, {rematchResult.unmatched_count || 0} unmatched.
+              </div>
+            )}
           </div>
-        </div>
-      )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" size="sm" onClick={closeRematchModal}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleRematch}
+              disabled={rematchConfirmText !== 'CLEAR' || rematching}
+            >
+              {rematching ? 'Re-Matching...' : 'Confirm Re-Match'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

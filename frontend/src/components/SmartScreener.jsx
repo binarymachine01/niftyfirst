@@ -1,9 +1,52 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import PageHeader from '@/components/common/PageHeader';
+import DataTablePagination from '@/components/common/DataTablePagination';
+import EmptyState from '@/components/common/EmptyState';
+import LoadingState from '@/components/common/LoadingState';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
-  Filter, RefreshCw, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUpRight, ArrowDownRight,
-  AlertTriangle, SlidersHorizontal, ChevronDown, ChevronUp, X,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from '@/components/ui/table';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetTrigger,
+} from '@/components/ui/sheet';
+import {
+  SlidersHorizontal,
+  RefreshCw,
+  ArrowUpRight,
+  ArrowDownRight,
+  Filter,
+  Download,
+  RotateCcw,
+  Sparkles,
+  Search,
+  Eye,
 } from 'lucide-react';
-import { api } from '../services/api';
+import { api } from '@/services/api';
+import { formatCrores, formatINR, formatPct } from '@/lib/utils';
+import { toast } from 'sonner';
 
 const SORT_OPTIONS = [
   { field: 'conviction_score', label: 'Conviction Score' },
@@ -15,7 +58,7 @@ const SORT_OPTIONS = [
   { field: 'return_3m', label: '3M Return' },
   { field: 'return_6m', label: '6M Return' },
   { field: 'week_52_position', label: '52W Position' },
-  { field: 'rsi', label: 'RSI' },
+  { field: 'rsi', label: 'RSI (14)' },
   { field: 'volume_ratio', label: 'Volume Ratio' },
   { field: 'delivery_pct', label: 'Delivery %' },
   { field: 'delivery_increase', label: 'Delivery Increase' },
@@ -37,24 +80,34 @@ const DEFAULT_FILTERS = {
     lookback_days: 30,
   },
   price: {
-    return_1d_min: null, return_1d_max: null,
-    return_5d_min: null, return_5d_max: null,
-    return_20d_min: null, return_20d_max: null,
-    return_3m_min: null, return_3m_max: null,
-    return_6m_min: null, return_6m_max: null,
-    week_52_position_min: null, week_52_position_max: null,
+    return_1d_min: null,
+    return_1d_max: null,
+    return_5d_min: null,
+    return_5d_max: null,
+    return_20d_min: null,
+    return_20d_max: null,
+    return_3m_min: null,
+    return_3m_max: null,
+    return_6m_min: null,
+    return_6m_max: null,
+    week_52_position_min: null,
+    week_52_position_max: null,
   },
   technical: {
-    above_20dma: null, above_50dma: null, above_200dma: null,
-    rsi_min: null, rsi_max: null,
-    volume_ratio_min: null, volume_ratio_max: null,
+    above_20dma: null,
+    above_50dma: null,
+    above_200dma: null,
+    rsi_min: null,
+    rsi_max: null,
+    volume_ratio_min: null,
+    volume_ratio_max: null,
     breakout: null,
   },
-  delivery: { delivery_pct_min: null, delivery_pct_max: null, delivery_increase_min: null },
-  // exchanges starts empty ("no constraint" - same as omitting the field,
-  // which falls back to the backend's ENABLED_EXCHANGES default). Seeded to
-  // the actual enabled list once fetched, so the checkboxes reflect reality
-  // instead of hardcoding a duplicate exchange list here.
+  delivery: {
+    delivery_pct_min: null,
+    delivery_pct_max: null,
+    delivery_increase_min: null,
+  },
   deals: { categories: [...DEAL_CATEGORIES], exchanges: [] },
   conviction: { min_score: null, max_score: null },
   sort: { field: 'conviction_score', direction: 'desc' },
@@ -68,452 +121,563 @@ function numOrNull(v) {
   return Number.isNaN(n) ? null : n;
 }
 
-function formatValue(v) {
-  if (v === null || v === undefined) return 'N/A';
-  const n = Number(v);
-  const sign = n < 0 ? '-' : '';
-  const abs = Math.abs(n);
-  if (abs >= 10000000) return `${sign}₹${(abs / 10000000).toFixed(2)} Cr`;
-  if (abs >= 100000) return `${sign}₹${(abs / 100000).toFixed(2)} L`;
-  return `${sign}₹${abs.toLocaleString('en-IN')}`;
-}
-
-function Pct({ value, suffix = '%' }) {
-  if (value === null || value === undefined) return <span className="text-slate-400 dark:text-slate-600">N/A</span>;
+function PctCell({ value, suffix = '%' }) {
+  if (value === null || value === undefined) {
+    return <span className="text-muted-foreground/60 font-mono text-[11px]">—</span>;
+  }
   const isUp = value >= 0;
   return (
-    <span className={`inline-flex items-center gap-0.5 font-bold ${isUp ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+    <span
+      className={`inline-flex items-center gap-0.5 font-bold font-mono text-xs ${
+        isUp ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+      }`}
+    >
       {isUp ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-      {isUp ? '+' : ''}{value.toFixed(2)}{suffix}
+      {isUp ? '+' : ''}
+      {value.toFixed(2)}
+      {suffix}
     </span>
   );
 }
-
-const SIGNAL_STYLES = {
-  'VERY STRONG': 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40',
-  STRONG: 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-cyan-500/30',
-  MODERATE: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30',
-  WEAK: 'bg-slate-200 dark:bg-white/5 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-white/10',
-};
 
 function SignalBadge({ tier }) {
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[10px] font-black tracking-wide ${SIGNAL_STYLES[tier] || SIGNAL_STYLES.WEAK}`}>
-      {tier}
-    </span>
-  );
-}
-
-function MinMaxField({ label, minVal, maxVal, onMin, onMax, step = '1' }) {
-  return (
-    <div className="flex items-center gap-2">
-      <label className="text-xs text-slate-600 dark:text-slate-400 w-28 flex-shrink-0">{label}</label>
-      <input type="number" step={step} placeholder="Min" value={minVal ?? ''} onChange={(e) => onMin(numOrNull(e.target.value))} className="glass-input w-full py-1.5 text-xs" />
-      <input type="number" step={step} placeholder="Max" value={maxVal ?? ''} onChange={(e) => onMax(numOrNull(e.target.value))} className="glass-input w-full py-1.5 text-xs" />
-    </div>
-  );
+  const t = tier?.toUpperCase();
+  if (t === 'VERY STRONG') return <Badge variant="positive">VERY STRONG</Badge>;
+  if (t === 'STRONG') return <Badge variant="default">STRONG</Badge>;
+  if (t === 'MODERATE') return <Badge variant="warning">MODERATE</Badge>;
+  return <Badge variant="neutral">WEAK</Badge>;
 }
 
 export default function SmartScreener({ onInspectSymbol }) {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [activeSection, setActiveSection] = useState('insider');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [expandedRow, setExpandedRow] = useState(null);
-  const [availableExchanges, setAvailableExchanges] = useState([]);
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
+  const [filterSection, setFilterSection] = useState('insider');
 
-  const update = (group, key, value) => {
-    setFilters((prev) => ({ ...prev, [group]: { ...prev[group], [key]: value } }));
-  };
-
-  const runSearch = useCallback(async (payload) => {
+  const executeScreen = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.runScreener(payload);
+      const res = await api.runScreener(filters);
       setData(res);
     } catch (err) {
-      console.error('Screener search failed:', err);
-      setError(err.response?.data?.detail || 'Screener search failed.');
-      setData(null);
+      console.error('Screener run error:', err);
+      setError('Unable to evaluate screener.');
+      toast.error('Screener execution failed');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filters]);
 
   useEffect(() => {
-    runSearch(DEFAULT_FILTERS);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    executeScreen();
+  }, [filters.page, filters.page_size, filters.sort]);
 
-  useEffect(() => {
-    api.getScreenerOptions()
-      .then((res) => {
-        const enabled = res.enabled_exchanges || [];
-        setAvailableExchanges(enabled);
-        // Seeds the exchange checkboxes to "all enabled" by default, matching
-        // the backend's own ENABLED_EXCHANGES default for an unset filter.
-        setFilters((prev) => ({ ...prev, deals: { ...prev.deals, exchanges: enabled } }));
-      })
-      .catch((err) => console.error('Failed to fetch screener options:', err));
-  }, []);
+  const updateInsider = (k, v) =>
+    setFilters((p) => ({ ...p, page: 1, insider: { ...p.insider, [k]: v } }));
+  const updatePrice = (k, v) =>
+    setFilters((p) => ({ ...p, page: 1, price: { ...p.price, [k]: v } }));
+  const updateTechnical = (k, v) =>
+    setFilters((p) => ({ ...p, page: 1, technical: { ...p.technical, [k]: v } }));
+  const updateDelivery = (k, v) =>
+    setFilters((p) => ({ ...p, page: 1, delivery: { ...p.delivery, [k]: v } }));
+  const updateConviction = (k, v) =>
+    setFilters((p) => ({ ...p, page: 1, conviction: { ...p.conviction, [k]: v } }));
 
-  const handleApply = () => {
-    runSearch({ ...filters, page: 1 });
-    setFilters((prev) => ({ ...prev, page: 1 }));
+  const resetFilters = () => {
+    setFilters(DEFAULT_FILTERS);
+    toast.info('Screener filters reset');
   };
 
-  const handleReset = () => {
-    const reset = { ...DEFAULT_FILTERS, deals: { ...DEFAULT_FILTERS.deals, exchanges: availableExchanges } };
-    setFilters(reset);
-    runSearch(reset);
-  };
-
-  const handleSort = (field) => {
-    const direction = filters.sort.field === field && filters.sort.direction === 'desc' ? 'asc' : 'desc';
-    const next = { ...filters, sort: { field, direction }, page: 1 };
-    setFilters(next);
-    runSearch(next);
-  };
-
-  const handlePage = (page) => {
-    const next = { ...filters, page };
-    setFilters(next);
-    runSearch(next);
-  };
-
-  const toggleCategory = (cat) => {
-    const current = filters.deals.categories;
-    const next = current.includes(cat) ? current.filter((c) => c !== cat) : [...current, cat];
-    update('deals', 'categories', next);
-  };
-
-  const toggleExchange = (ex) => {
-    const current = filters.deals.exchanges;
-    const next = current.includes(ex) ? current.filter((e) => e !== ex) : [...current, ex];
-    update('deals', 'exchanges', next);
-  };
-
-  const sections = [
-    { id: 'insider', label: 'Insider' },
-    { id: 'price', label: 'Price' },
-    { id: 'technical', label: 'Technical' },
-    { id: 'delivery', label: 'Delivery' },
-    { id: 'deals', label: 'Deals & Conviction' },
-  ];
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="glass-panel p-6 rounded-2xl">
-        <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2 tracking-tight">
-          <SlidersHorizontal className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
-          Smart Screener
-        </h2>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 max-w-2xl">
-          Rank stocks by combining insider activity, the Insider Conviction Score, price/technical confirmation, and delivery data.
-          Screens stocks with insider/institutional deal activity in the selected lookback window.
-        </p>
+  const renderFilterControls = () => (
+    <div className="space-y-4 text-xs">
+      {/* Category Tabs for Filters */}
+      <div className="flex flex-wrap items-center gap-1 p-1 rounded-md bg-muted border border-border">
+        {[
+          { id: 'insider', label: 'Insider' },
+          { id: 'price', label: 'Price' },
+          { id: 'technical', label: 'Technical' },
+          { id: 'delivery', label: 'Delivery' },
+        ].map((sec) => (
+          <button
+            key={sec.id}
+            onClick={() => setFilterSection(sec.id)}
+            className={`px-2.5 py-1 text-xs font-semibold rounded cursor-pointer transition-all ${
+              filterSection === sec.id
+                ? 'bg-card text-foreground shadow-xs font-bold'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {sec.label}
+          </button>
+        ))}
       </div>
 
-      {/* Filter Panel */}
-      <div className="glass-panel p-6 rounded-2xl">
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-950/70 border border-slate-200 dark:border-white/[0.08] text-xs mb-5 w-fit flex-wrap">
-          {sections.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => setActiveSection(s.id)}
-              className={`px-3.5 py-1.5 rounded-lg font-bold transition-all ${
-                activeSection === s.id
-                  ? 'bg-white dark:bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-slate-300 dark:border-cyan-500/40 shadow-sm'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
-              }`}
+      {/* Insider Section */}
+      {filterSection === 'insider' && (
+        <div className="space-y-3 pt-1">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5">
+              <Checkbox
+                id="insider-buy"
+                checked={filters.insider.buy}
+                onCheckedChange={(c) => updateInsider('buy', Boolean(c))}
+              />
+              <Label htmlFor="insider-buy" className="text-xs cursor-pointer">
+                BUY Filings
+              </Label>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Checkbox
+                id="insider-sell"
+                checked={filters.insider.sell}
+                onCheckedChange={(c) => updateInsider('sell', Boolean(c))}
+              />
+              <Label htmlFor="insider-sell" className="text-xs cursor-pointer">
+                SELL Filings
+              </Label>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">Lookback Period</Label>
+            <Select
+              value={String(filters.insider.lookback_days)}
+              onValueChange={(val) => updateInsider('lookback_days', Number(val))}
             >
-              {s.label}
-            </button>
-          ))}
-        </div>
-
-        {activeSection === 'insider' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
-            <div className="flex items-center gap-5">
-              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                <input type="checkbox" checked={filters.insider.buy} onChange={(e) => update('insider', 'buy', e.target.checked)} className="w-3.5 h-3.5" />
-                Insider BUY
-              </label>
-              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                <input type="checkbox" checked={filters.insider.sell} onChange={(e) => update('insider', 'sell', e.target.checked)} className="w-3.5 h-3.5" />
-                Insider SELL
-              </label>
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-600 dark:text-slate-400 w-32 flex-shrink-0">Lookback</label>
-              <select value={filters.insider.lookback_days} onChange={(e) => update('insider', 'lookback_days', Number(e.target.value))} className="glass-input text-xs py-1.5 font-medium">
-                {LOOKBACK_OPTIONS.map((d) => <option key={d} value={d}>{d} Days</option>)}
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-600 dark:text-slate-400 w-32 flex-shrink-0">Min Value (₹ Lakhs)</label>
-              <input type="number" min="0" value={filters.insider.min_transaction_value_lakhs} onChange={(e) => update('insider', 'min_transaction_value_lakhs', numOrNull(e.target.value) || 0)} className="glass-input w-full py-1.5 text-xs" />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-600 dark:text-slate-400 w-32 flex-shrink-0">Minimum Insiders</label>
-              <input type="number" min="0" value={filters.insider.min_insiders} onChange={(e) => update('insider', 'min_insiders', numOrNull(e.target.value) || 0)} className="glass-input w-full py-1.5 text-xs" />
-            </div>
-            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
-              <input type="checkbox" checked={filters.insider.promoter_buying} onChange={(e) => update('insider', 'promoter_buying', e.target.checked)} className="w-3.5 h-3.5" />
-              Promoter Buying
-            </label>
-            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
-              <input type="checkbox" checked={filters.insider.repeat_buying} onChange={(e) => update('insider', 'repeat_buying', e.target.checked)} className="w-3.5 h-3.5" />
-              Repeat Buying
-            </label>
-          </div>
-        )}
-
-        {activeSection === 'price' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
-            <MinMaxField label="1D Return (%)" minVal={filters.price.return_1d_min} maxVal={filters.price.return_1d_max} onMin={(v) => update('price', 'return_1d_min', v)} onMax={(v) => update('price', 'return_1d_max', v)} />
-            <MinMaxField label="5D Return (%)" minVal={filters.price.return_5d_min} maxVal={filters.price.return_5d_max} onMin={(v) => update('price', 'return_5d_min', v)} onMax={(v) => update('price', 'return_5d_max', v)} />
-            <MinMaxField label="20D Return (%)" minVal={filters.price.return_20d_min} maxVal={filters.price.return_20d_max} onMin={(v) => update('price', 'return_20d_min', v)} onMax={(v) => update('price', 'return_20d_max', v)} />
-            <MinMaxField label="3M Return (%)" minVal={filters.price.return_3m_min} maxVal={filters.price.return_3m_max} onMin={(v) => update('price', 'return_3m_min', v)} onMax={(v) => update('price', 'return_3m_max', v)} />
-            <MinMaxField label="6M Return (%)" minVal={filters.price.return_6m_min} maxVal={filters.price.return_6m_max} onMin={(v) => update('price', 'return_6m_min', v)} onMax={(v) => update('price', 'return_6m_max', v)} />
-            <MinMaxField label="52W Position (%)" minVal={filters.price.week_52_position_min} maxVal={filters.price.week_52_position_max} onMin={(v) => update('price', 'week_52_position_min', v)} onMax={(v) => update('price', 'week_52_position_max', v)} />
-          </div>
-        )}
-
-        {activeSection === 'technical' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
-            <div className="flex items-center gap-5 flex-wrap">
-              {[['above_20dma', 'Above 20 DMA'], ['above_50dma', 'Above 50 DMA'], ['above_200dma', 'Above 200 DMA']].map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  <input type="checkbox" checked={!!filters.technical[key]} onChange={(e) => update('technical', key, e.target.checked || null)} className="w-3.5 h-3.5" />
-                  {label}
-                </label>
-              ))}
-            </div>
-            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
-              <input type="checkbox" checked={!!filters.technical.breakout} onChange={(e) => update('technical', 'breakout', e.target.checked || null)} className="w-3.5 h-3.5" />
-              20-Day Breakout
-            </label>
-            <MinMaxField label="RSI" minVal={filters.technical.rsi_min} maxVal={filters.technical.rsi_max} onMin={(v) => update('technical', 'rsi_min', v)} onMax={(v) => update('technical', 'rsi_max', v)} />
-            <MinMaxField label="Volume Ratio" minVal={filters.technical.volume_ratio_min} maxVal={filters.technical.volume_ratio_max} onMin={(v) => update('technical', 'volume_ratio_min', v)} onMax={(v) => update('technical', 'volume_ratio_max', v)} step="0.1" />
-          </div>
-        )}
-
-        {activeSection === 'delivery' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
-            <MinMaxField label="Delivery % " minVal={filters.delivery.delivery_pct_min} maxVal={filters.delivery.delivery_pct_max} onMin={(v) => update('delivery', 'delivery_pct_min', v)} onMax={(v) => update('delivery', 'delivery_pct_max', v)} />
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-600 dark:text-slate-400 w-32 flex-shrink-0">Delivery Increase ≥ (pts)</label>
-              <input type="number" value={filters.delivery.delivery_increase_min ?? ''} onChange={(e) => update('delivery', 'delivery_increase_min', numOrNull(e.target.value))} className="glass-input w-full py-1.5 text-xs" />
-            </div>
-          </div>
-        )}
-
-        {activeSection === 'deals' && (
-          <div className="space-y-5">
-            <div>
-              <div className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">Deal Types</div>
-              <div className="flex items-center gap-4 flex-wrap">
-                {DEAL_CATEGORIES.map((cat) => (
-                  <label key={cat} className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    <input type="checkbox" checked={filters.deals.categories.includes(cat)} onChange={() => toggleCategory(cat)} className="w-3.5 h-3.5" />
-                    {cat}
-                  </label>
+              <SelectTrigger className="h-8 text-xs font-mono">
+                <SelectValue placeholder="Lookback" />
+              </SelectTrigger>
+              <SelectContent>
+                {LOOKBACK_OPTIONS.map((d) => (
+                  <SelectItem key={d} value={String(d)} className="text-xs font-mono">
+                    Last {d} Days
+                  </SelectItem>
                 ))}
-              </div>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">Min Turnover (₹ Lakhs)</Label>
+            <Input
+              type="number"
+              step="10"
+              value={filters.insider.min_transaction_value_lakhs}
+              onChange={(e) =>
+                updateInsider('min_transaction_value_lakhs', Number(e.target.value) || 0)
+              }
+              className="font-mono text-xs h-8"
+            />
+          </div>
+
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center gap-1.5">
+              <Checkbox
+                id="promoter-only"
+                checked={filters.insider.promoter_buying}
+                onCheckedChange={(c) => updateInsider('promoter_buying', Boolean(c))}
+              />
+              <Label htmlFor="promoter-only" className="text-xs cursor-pointer">
+                Promoter Buying Only
+              </Label>
             </div>
-            {availableExchanges.length > 0 && (
-              <div>
-                {/* Options reflect scripts.common:ENABLED_EXCHANGES (NSE only today) */}
-                <div className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">Exchanges</div>
-                <div className="flex items-center gap-4 flex-wrap">
-                  {availableExchanges.map((ex) => (
-                    <label key={ex} className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      <input type="checkbox" checked={filters.deals.exchanges.includes(ex)} onChange={() => toggleExchange(ex)} className="w-3.5 h-3.5" />
-                      {ex}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
-              <MinMaxField label="Conviction Score" minVal={filters.conviction.min_score} maxVal={filters.conviction.max_score} onMin={(v) => update('conviction', 'min_score', v)} onMax={(v) => update('conviction', 'max_score', v)} />
+            <div className="flex items-center gap-1.5">
+              <Checkbox
+                id="repeat-buyers"
+                checked={filters.insider.repeat_buying}
+                onCheckedChange={(c) => updateInsider('repeat_buying', Boolean(c))}
+              />
+              <Label htmlFor="repeat-buyers" className="text-xs cursor-pointer">
+                Repeat Accumulation
+              </Label>
             </div>
           </div>
-        )}
-
-        <div className="flex items-center gap-2.5 mt-6 pt-4 border-t border-slate-200 dark:border-white/[0.08]">
-          <button onClick={handleApply} className="btn-primary text-xs py-2 px-4.5">
-            <Filter className="w-3.5 h-3.5" /> Apply Filters
-          </button>
-          <button onClick={handleReset} className="btn-secondary text-xs py-2 px-4">Reset</button>
-          <button onClick={() => runSearch(filters)} className="btn-secondary p-2 ml-auto" title="Refresh">
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
-      </div>
-
-      {/* Results */}
-      {error && (
-        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2 font-medium">
-          <AlertTriangle className="w-4 h-4 flex-shrink-0" /> {error}
         </div>
       )}
 
-      <div className="glass-panel p-6 rounded-2xl">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <h3 className="text-sm font-extrabold text-slate-900 dark:text-white tracking-tight">
-            {loading ? 'Screening...' : data ? `${data.total_count} Stock${data.total_count === 1 ? '' : 's'} Matched` : 'Results'}
-            {data && <span className="text-xs font-normal text-slate-500 dark:text-slate-400 ml-2">(from a universe of {data.universe_size} active symbols)</span>}
-          </h3>
+      {/* Price & Returns Section */}
+      {filterSection === 'price' && (
+        <div className="space-y-3 pt-1">
+          <div className="space-y-1.5">
+            <Label className="text-xs">1D Return Range (%)</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                type="number"
+                placeholder="Min %"
+                value={filters.price.return_1d_min ?? ''}
+                onChange={(e) => updatePrice('return_1d_min', numOrNull(e.target.value))}
+                className="font-mono text-xs h-8"
+              />
+              <Input
+                type="number"
+                placeholder="Max %"
+                value={filters.price.return_1d_max ?? ''}
+                onChange={(e) => updatePrice('return_1d_max', numOrNull(e.target.value))}
+                className="font-mono text-xs h-8"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">20D Return Range (%)</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                type="number"
+                placeholder="Min %"
+                value={filters.price.return_20d_min ?? ''}
+                onChange={(e) => updatePrice('return_20d_min', numOrNull(e.target.value))}
+                className="font-mono text-xs h-8"
+              />
+              <Input
+                type="number"
+                placeholder="Max %"
+                value={filters.price.return_20d_max ?? ''}
+                onChange={(e) => updatePrice('return_20d_max', numOrNull(e.target.value))}
+                className="font-mono text-xs h-8"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">52W Position Range (0-100%)</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                type="number"
+                min="0"
+                max="100"
+                placeholder="Min"
+                value={filters.price.week_52_position_min ?? ''}
+                onChange={(e) => updatePrice('week_52_position_min', numOrNull(e.target.value))}
+                className="font-mono text-xs h-8"
+              />
+              <Input
+                type="number"
+                min="0"
+                max="100"
+                placeholder="Max"
+                value={filters.price.week_52_position_max ?? ''}
+                onChange={(e) => updatePrice('week_52_position_max', numOrNull(e.target.value))}
+                className="font-mono text-xs h-8"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Technical Signals */}
+      {filterSection === 'technical' && (
+        <div className="space-y-3 pt-1">
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <Checkbox
+                id="above-50dma"
+                checked={filters.technical.above_50dma === true}
+                onCheckedChange={(c) => updateTechnical('above_50dma', c ? true : null)}
+              />
+              <Label htmlFor="above-50dma" className="text-xs cursor-pointer">
+                Price Above 50 DMA
+              </Label>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Checkbox
+                id="above-200dma"
+                checked={filters.technical.above_200dma === true}
+                onCheckedChange={(c) => updateTechnical('above_200dma', c ? true : null)}
+              />
+              <Label htmlFor="above-200dma" className="text-xs cursor-pointer">
+                Price Above 200 DMA
+              </Label>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Checkbox
+                id="breakout-flag"
+                checked={filters.technical.breakout === true}
+                onCheckedChange={(c) => updateTechnical('breakout', c ? true : null)}
+              />
+              <Label htmlFor="breakout-flag" className="text-xs cursor-pointer">
+                52W Breakout (within 5% of High)
+              </Label>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">RSI (14) Range</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                type="number"
+                placeholder="Min (e.g. 40)"
+                value={filters.technical.rsi_min ?? ''}
+                onChange={(e) => updateTechnical('rsi_min', numOrNull(e.target.value))}
+                className="font-mono text-xs h-8"
+              />
+              <Input
+                type="number"
+                placeholder="Max (e.g. 70)"
+                value={filters.technical.rsi_max ?? ''}
+                onChange={(e) => updateTechnical('rsi_max', numOrNull(e.target.value))}
+                className="font-mono text-xs h-8"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delivery Section */}
+      {filterSection === 'delivery' && (
+        <div className="space-y-3 pt-1">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Min Delivery %</Label>
+            <Input
+              type="number"
+              min="0"
+              max="100"
+              placeholder="e.g. 50"
+              value={filters.delivery.delivery_pct_min ?? ''}
+              onChange={(e) => updateDelivery('delivery_pct_min', numOrNull(e.target.value))}
+              className="font-mono text-xs h-8"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Min Delivery Increase (%)</Label>
+            <Input
+              type="number"
+              placeholder="e.g. 20"
+              value={filters.delivery.delivery_increase_min ?? ''}
+              onChange={(e) => updateDelivery('delivery_increase_min', numOrNull(e.target.value))}
+              className="font-mono text-xs h-8"
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="pt-2 border-t border-border/80 flex items-center justify-between gap-2">
+        <Button size="xs" variant="outline" onClick={resetFilters}>
+          Reset
+        </Button>
+        <Button size="xs" onClick={() => executeScreen()} className="font-bold">
+          Apply Filters
+        </Button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      {/* Page Header */}
+      <PageHeader
+        title="Smart Stock Screener"
+        description="Filter and rank Indian equities combining insider conviction scores, technical breakout signals, and delivery spikes."
+        badge="Multi-Factor Scanner"
+        actions={
+          <div className="flex items-center gap-2">
+            {/* Mobile Filter Sheet Trigger */}
+            <Sheet open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
+              <SheetTrigger asChild>
+                <Button size="sm" variant="outline" className="md:hidden gap-1.5 text-xs">
+                  <Filter className="w-3.5 h-3.5" />
+                  Filter Parameters
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-80 p-6 overflow-y-auto">
+                <SheetHeader className="pb-3 border-b border-border text-left">
+                  <SheetTitle className="text-base font-bold flex items-center gap-2">
+                    <SlidersHorizontal className="w-4 h-4 text-primary" />
+                    Screener Parameters
+                  </SheetTitle>
+                  <SheetDescription className="text-xs">
+                    Adjust quantitative filter thresholds
+                  </SheetDescription>
+                </SheetHeader>
+                <div className="pt-4">{renderFilterControls()}</div>
+              </SheetContent>
+            </Sheet>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={executeScreen}
+              className="gap-1.5 text-xs"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              Run Screen
+            </Button>
+          </div>
+        }
+      />
+
+      {/* Main Two-Column Layout */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+        {/* Left Column: Filter Sidebar (Desktop) */}
+        <div className="hidden md:block md:col-span-4 lg:col-span-3 space-y-4">
+          <Card>
+            <CardHeader className="p-4 border-b border-border/80">
+              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                <SlidersHorizontal className="w-4 h-4 text-primary" />
+                Filter Parameters
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Quantitative rule constraints
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4">{renderFilterControls()}</CardContent>
+          </Card>
         </div>
 
-        {loading ? (
-          <div className="py-16 flex items-center justify-center gap-2.5 text-xs text-slate-500 dark:text-slate-400">
-            <span className="w-4 h-4 border-2 border-cyan-500 dark:border-cyan-400 border-t-transparent rounded-full animate-spin" />
-            Running screener across the active symbol universe...
-          </div>
-        ) : !data || data.results.length === 0 ? (
-          <div className="py-14 text-center text-xs text-slate-500 dark:text-slate-400 space-y-3">
-            <p className="font-semibold">No stocks match the selected criteria.</p>
-            <p>Try relaxing one or more filters.</p>
-            {data?.top_exclusion_reasons?.length > 0 && (
-              <div className="max-w-md mx-auto text-left glass-panel p-4 rounded-xl mt-4">
-                <div className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 tracking-wider mb-2">Most Restrictive Filters</div>
-                <ul className="space-y-1">
-                  {data.top_exclusion_reasons.map((r, i) => (
-                    <li key={i} className="flex justify-between text-[11px] text-slate-600 dark:text-slate-400">
-                      <span>{r.reason}</span>
-                      <span className="font-mono font-bold">{r.excluded_count}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-white/[0.06]">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-slate-100 dark:bg-[#0c1222] text-slate-700 dark:text-slate-400 uppercase text-[10px] tracking-wider">
-                  <tr>
-                    <th className="py-2.5 px-3">Rank</th>
-                    <th className="py-2.5 px-3">Stock</th>
-                    {[
-                      ['conviction_score', 'Conviction'],
-                      ['insider_value', 'Insider Value'],
-                      ['insider_count', 'Insiders'],
-                      ['price_momentum', 'Momentum'],
-                      ['delivery_pct', 'Delivery'],
-                      ['volume_ratio', 'Vol Ratio'],
-                      ['historical_win_rate', 'Win Rate'],
-                      ['signal_strength_rank', 'Signal'],
-                    ].map(([field, label]) => (
-                      <th key={field} className="py-2.5 px-3 cursor-pointer select-none text-right" onClick={() => handleSort(field)}>
-                        <div className="flex items-center justify-end gap-1">
-                          {label}
-                          {filters.sort.field === field ? (
-                            filters.sort.direction === 'desc' ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 opacity-40" />
-                          )}
-                        </div>
-                      </th>
-                    ))}
-                    <th className="py-2.5 px-3"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.04] font-mono">
-                  {data.results.map((r) => (
-                    <React.Fragment key={r.symbol}>
-                      <tr className="hover:bg-slate-100/70 dark:hover:bg-white/[0.025] transition-colors">
-                        <td className="py-2.5 px-3 text-slate-500 dark:text-slate-400">#{r.rank}</td>
-                        <td className="py-2.5 px-3">
-                          <button onClick={() => onInspectSymbol && onInspectSymbol(r.symbol)} className="font-bold text-slate-900 dark:text-white hover:text-cyan-600 dark:hover:text-cyan-400 underline decoration-dotted underline-offset-2">
-                            {r.symbol}
-                          </button>
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-bold">
-                          {r.conviction_score !== null ? (
-                            <span className={r.conviction_score >= 70 ? 'text-emerald-600 dark:text-emerald-400' : r.conviction_score >= 40 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}>
-                              {r.conviction_score.toFixed(0)}
-                            </span>
-                          ) : <span className="text-slate-400 dark:text-slate-600">N/A</span>}
-                        </td>
-                        <td className={`py-2.5 px-3 text-right font-bold ${(r.insider_value || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                          {formatValue(r.insider_value)}
-                        </td>
-                        <td className="py-2.5 px-3 text-right text-slate-700 dark:text-slate-300">{r.insider_count}</td>
-                        <td className="py-2.5 px-3 text-right"><Pct value={r.price_momentum} /></td>
-                        <td className="py-2.5 px-3 text-right text-slate-700 dark:text-slate-300">{r.delivery_pct !== null ? `${r.delivery_pct.toFixed(1)}%` : 'N/A'}</td>
-                        <td className="py-2.5 px-3 text-right text-slate-700 dark:text-slate-300">{r.volume_ratio !== null ? `${r.volume_ratio.toFixed(2)}×` : 'N/A'}</td>
-                        <td className="py-2.5 px-3 text-right text-slate-700 dark:text-slate-300">
-                          {r.historical_win_rate_available ? `${r.historical_win_rate.toFixed(0)}%` : <span className="text-slate-400 dark:text-slate-600">Insufficient</span>}
-                        </td>
-                        <td className="py-2.5 px-3 text-right"><SignalBadge tier={r.signal_strength} /></td>
-                        <td className="py-2.5 px-3 text-right">
-                          <button onClick={() => setExpandedRow(expandedRow === r.symbol ? null : r.symbol)} className="btn-secondary p-1.5">
-                            {expandedRow === r.symbol ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                          </button>
-                        </td>
-                      </tr>
-                      {expandedRow === r.symbol && (
-                        <tr className="bg-slate-50 dark:bg-white/[0.02]">
-                          <td colSpan={10} className="py-4 px-4 font-sans">
-                            <div className="flex flex-wrap items-start gap-6">
-                              <div className="text-xs space-y-1 text-slate-600 dark:text-slate-400">
-                                <div>Confidence: <span className="font-bold text-slate-800 dark:text-slate-200">{r.conviction_confidence || 'N/A'}</span></div>
-                                <div>1D: <Pct value={r.return_1d} /> · 5D: <Pct value={r.return_5d} /> · 20D: <Pct value={r.return_20d} /> · 3M: <Pct value={r.return_3m} /> · 6M: <Pct value={r.return_6m} /></div>
-                                <div>52W Position: {r.week_52_position !== null ? `${r.week_52_position.toFixed(0)}%` : 'N/A'} · RSI: {r.rsi !== null ? r.rsi.toFixed(0) : 'N/A'} · Breakout: {r.breakout === true ? 'Yes' : r.breakout === false ? 'No' : 'N/A'}</div>
-                                {r.historical_win_rate_available && (
-                                  <div>Historical Win Rate: {r.historical_win_rate.toFixed(0)}% ({Math.round(r.historical_win_rate / 100 * r.historical_win_rate_sample)}/{r.historical_win_rate_sample} signals)</div>
-                                )}
-                              </div>
-                              <div className="flex-1 min-w-[220px]">
-                                <div className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 tracking-wider mb-1.5">Key Reasons</div>
-                                {r.signal_reasons.length === 0 ? (
-                                  <p className="text-xs text-slate-500 dark:text-slate-400">No confirming evidence beyond conviction data.</p>
-                                ) : (
-                                  <ul className="flex flex-wrap gap-1.5">
-                                    {r.signal_reasons.map((reason, i) => (
-                                      <li key={i} className="badge-tag">✓ {reason}</li>
-                                    ))}
-                                  </ul>
-                                )}
-                              </div>
-                              <button onClick={() => onInspectSymbol && onInspectSymbol(r.symbol)} className="btn-secondary text-xs py-1.5 px-3 flex-shrink-0">
-                                Full Conviction Breakdown →
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        {/* Right Column: Ranked Screener Results */}
+        <div className="md:col-span-8 lg:col-span-9 space-y-4">
+          <Card>
+            <CardHeader className="p-4 sm:p-5 border-b border-border/80">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base font-bold flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-primary" />
+                    Ranked Equities ({data?.total_count || 0})
+                  </CardTitle>
+                  <CardDescription className="text-xs mt-0.5">
+                    Click any ticker to inspect in-depth conviction scoring & historical deals
+                  </CardDescription>
+                </div>
 
-            {data.total_pages > 1 && (
-              <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-white/[0.08] mt-4 text-xs">
-                <div className="text-slate-500 dark:text-slate-400 font-mono">
-                  Page <span className="text-slate-900 dark:text-white font-bold">{data.page}</span> of {data.total_pages} ({data.total_count} total)
-                </div>
+                {/* Sort Field Selector */}
                 <div className="flex items-center gap-2">
-                  <button disabled={data.page <= 1} onClick={() => handlePage(data.page - 1)} className="btn-secondary py-1.5 px-3 disabled:opacity-30">
-                    <ChevronLeft className="w-4 h-4" /> Previous
-                  </button>
-                  <button disabled={data.page >= data.total_pages} onClick={() => handlePage(data.page + 1)} className="btn-secondary py-1.5 px-3 disabled:opacity-30">
-                    Next <ChevronRight className="w-4 h-4" />
-                  </button>
+                  <span className="text-xs text-muted-foreground">Rank by:</span>
+                  <Select
+                    value={filters.sort.field}
+                    onValueChange={(val) =>
+                      setFilters((p) => ({
+                        ...p,
+                        sort: { ...p.sort, field: val },
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="h-8 w-44 text-xs font-semibold">
+                      <SelectValue placeholder="Sort" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SORT_OPTIONS.map((s) => (
+                        <SelectItem key={s.field} value={s.field} className="text-xs">
+                          {s.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
-            )}
-          </>
-        )}
+            </CardHeader>
+
+            <CardContent className="p-0">
+              {loading ? (
+                <div className="p-6">
+                  <LoadingState mode="table" rows={8} />
+                </div>
+              ) : !data?.results || data.results.length === 0 ? (
+                <EmptyState
+                  title="No Stocks Passed Filter Constraints"
+                  description="Try easing the lookback period, lowering the turnover threshold, or unchecking technical requirements."
+                  actionLabel="Reset to Default Parameters"
+                  onAction={resetFilters}
+                />
+              ) : (
+                <div className="relative overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Symbol / Company</TableHead>
+                        <TableHead className="text-right">Conviction</TableHead>
+                        <TableHead>Signal</TableHead>
+                        <TableHead className="text-right">Price</TableHead>
+                        <TableHead className="text-right">1D</TableHead>
+                        <TableHead className="text-right">20D</TableHead>
+                        <TableHead className="text-right">52W Pos</TableHead>
+                        <TableHead className="text-right">Vol Ratio</TableHead>
+                        <TableHead className="text-right">Delivery %</TableHead>
+                        <TableHead className="text-right">Insider Value</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.results.map((item) => (
+                        <TableRow
+                          key={item.symbol}
+                          className="hover:bg-muted/40 cursor-pointer"
+                          onClick={() => onInspectSymbol && onInspectSymbol(item.symbol)}
+                        >
+                          <TableCell>
+                            <div className="flex items-center gap-1.5">
+                              <Badge variant="secondary" className="font-mono text-xs font-bold">
+                                {item.symbol}
+                              </Badge>
+                              <span className="font-bold text-foreground text-xs">{item.company_name}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-bold text-sm text-foreground">
+                            {item.conviction_score !== null ? (
+                              <span
+                                className={
+                                  item.conviction_score >= 70
+                                    ? 'text-emerald-600 dark:text-emerald-400'
+                                    : item.conviction_score >= 50
+                                    ? 'text-amber-600 dark:text-amber-400'
+                                    : 'text-muted-foreground'
+                                }
+                              >
+                                {item.conviction_score.toFixed(0)}
+                              </span>
+                            ) : (
+                              '—'
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <SignalBadge tier={item.signal_strength_tier} />
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-xs">
+                            ₹{item.price ? Number(item.price).toFixed(2) : '—'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <PctCell value={item.return_1d} />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <PctCell value={item.return_20d} />
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-xs">
+                            {item.week_52_position !== null
+                              ? `${item.week_52_position.toFixed(0)}%`
+                              : '—'}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-xs">
+                            {item.volume_ratio !== null ? `${item.volume_ratio.toFixed(1)}x` : '—'}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-xs">
+                            {item.delivery_pct !== null ? `${item.delivery_pct.toFixed(0)}%` : '—'}
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-bold text-foreground text-xs">
+                            {formatCrores(item.insider_value)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+
+              {/* Pagination */}
+              {data && (
+                <DataTablePagination
+                  page={data.page || 1}
+                  pageSize={data.page_size || 25}
+                  totalCount={data.total_count || 0}
+                  totalPages={data.total_pages || 1}
+                  onPageChange={(p) => setFilters((prev) => ({ ...prev, page: p }))}
+                  onPageSizeChange={(sz) =>
+                    setFilters((prev) => ({ ...prev, page: 1, page_size: sz }))
+                  }
+                />
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

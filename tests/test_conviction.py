@@ -117,8 +117,8 @@ def test_repeat_buying_boosts_accumulation():
 # 5. Promoter buying receives a higher role bonus than an unclassified buyer
 # ---------------------------------------------------------------------------
 def test_promoter_role_bonus_exceeds_other_role():
-    promoter_deals = [make_deal("BUY", days_ago=5, role="Promoter")]
-    other_deals = [make_deal("BUY", days_ago=5, role="Other")]
+    promoter_deals = [make_deal("BUY", days_ago=60, role="Promoter")]
+    other_deals = [make_deal("BUY", days_ago=60, role="Other")]
     promoter_score = factors.compute_insider_activity(promoter_deals, TODAY)["score"]
     other_score = factors.compute_insider_activity(other_deals, TODAY)["score"]
     assert promoter_score > other_score
@@ -128,9 +128,9 @@ def test_promoter_role_bonus_exceeds_other_role():
 # 6. Large transaction relative to market cap scores higher than a small one
 # ---------------------------------------------------------------------------
 def test_large_transaction_vs_market_cap_scores_higher():
-    deals = [make_deal("BUY", days_ago=5, total_value=50_000_000.0)]  # ₹5 Cr
-    small_cap_result = factors.compute_transaction_strength(deals, market_cap=500_000_000.0)     # ₹50 Cr mcap -> 10%
-    large_cap_result = factors.compute_transaction_strength(deals, market_cap=500_000_000_000.0)  # ₹50,000 Cr mcap -> 0.01%
+    deals = [make_deal("BUY", days_ago=5, total_value=500_000.0)]  # ₹5 Lakhs
+    small_cap_result = factors.compute_transaction_strength(deals, market_cap=50_000_000.0)      # ₹5 Cr mcap -> 1%
+    large_cap_result = factors.compute_transaction_strength(deals, market_cap=500_000_000_000.0)  # ₹50,000 Cr mcap -> 0.0001%
     assert small_cap_result["score"] > large_cap_result["score"]
 
 

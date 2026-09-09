@@ -4,6 +4,20 @@ import {
   Info, ChevronRight, RefreshCw, ShieldCheck, ShieldAlert, ShieldQuestion,
 } from 'lucide-react';
 import { api } from '../services/api';
+import { PageHeader } from './common/PageHeader';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './ui/card';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from './ui/table';
+import { cn } from '@/lib/utils';
 
 function formatValue(v) {
   if (v === null || v === undefined) return '-';
@@ -16,28 +30,24 @@ function formatValue(v) {
 }
 
 function ConfidenceBadge({ tier }) {
-  const styles = {
-    HIGH: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
-    MEDIUM: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30',
-    LOW: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30',
-  };
   const icons = { HIGH: ShieldCheck, MEDIUM: ShieldQuestion, LOW: ShieldAlert };
   const Icon = icons[tier] || ShieldQuestion;
+  const variant = tier === 'HIGH' ? 'positive' : tier === 'MEDIUM' ? 'warning' : 'negative';
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold ${styles[tier] || styles.LOW}`}>
-      <Icon className="w-3.5 h-3.5" /> {tier} CONFIDENCE
-    </span>
+    <Badge variant={variant} className="inline-flex items-center gap-1 font-bold text-[10px]">
+      <Icon className="w-3 h-3" /> {tier} CONFIDENCE
+    </Badge>
   );
 }
 
 function ScoreGauge({ score }) {
   if (score === null || score === undefined) {
-    return <div className="text-3xl font-black text-slate-400 dark:text-slate-600">N/A</div>;
+    return <div className="text-3xl font-black text-muted-foreground">N/A</div>;
   }
-  const color = score >= 70 ? 'text-emerald-500 dark:text-emerald-400' : score >= 40 ? 'text-amber-500 dark:text-amber-400' : 'text-rose-500 dark:text-rose-400';
+  const color = score >= 70 ? 'text-positive' : score >= 40 ? 'text-warning' : 'text-negative';
   return (
-    <div className={`text-4xl font-black font-mono ${color}`}>
-      {score.toFixed(0)}<span className="text-lg text-slate-400 dark:text-slate-500">/100</span>
+    <div className={cn('text-4xl font-black font-mono', color)}>
+      {score.toFixed(0)}<span className="text-lg text-muted-foreground">/100</span>
     </div>
   );
 }
@@ -69,9 +79,7 @@ export default function InsiderConviction({ initialSymbol = null }) {
     fetchRanking();
   }, []);
 
-  // Deep-link support: when arriving from the Smart Screener with a
-  // pre-selected symbol, auto-run the inspection instead of duplicating
-  // stock-detail UI in the screener itself.
+  // Deep-link support from screener
   useEffect(() => {
     if (initialSymbol) {
       setSymbolInput(initialSymbol);
@@ -110,246 +118,273 @@ export default function InsiderConviction({ initialSymbol = null }) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="glass-panel p-6 rounded-2xl">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2 tracking-tight">
-              <Gauge className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
-              Insider Conviction Engine
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 max-w-2xl">
-              A transparent 0-100 score reflecting the strength of observable insider conviction based on
-              available transaction and market evidence. Not a guaranteed return or prediction.
-            </p>
-          </div>
-
-          <form onSubmit={handleSearchSubmit} className="flex items-center gap-2.5 w-full sm:w-auto">
-            <input
+      {/* Top Header */}
+      <PageHeader
+        title="Insider Conviction Engine"
+        subtitle="Transparent 0-100 quantitative conviction score derived from observable insider filings and transaction conviction"
+        badge="Scoring Algorithm"
+      >
+        <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
               type="text"
               placeholder="e.g. HINDUNILVR, INFY..."
               value={symbolInput}
               onChange={(e) => setSymbolInput(e.target.value)}
-              className="glass-input font-mono font-bold text-xs uppercase w-48 tracking-wider"
+              className="h-9 w-44 pl-8 font-mono font-bold text-xs uppercase"
             />
-            <button type="submit" className="btn-primary text-xs py-2 px-4.5">
-              Score It
-            </button>
-          </form>
-        </div>
-      </div>
-
-      {/* Ranking Table */}
-      <div className="glass-panel p-6 rounded-2xl">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-extrabold text-slate-900 dark:text-white tracking-tight">
-            Top Conviction Ranking (Active Insider Activity, Last 180 Days)
-          </h3>
-          <button onClick={fetchRanking} className="btn-secondary p-2" title="Refresh">
-            <RefreshCw className={`w-3.5 h-3.5 ${rankingLoading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
-
-        {ranking.length === 0 ? (
-          <p className="text-xs text-slate-500 dark:text-slate-400 py-8 text-center">
-            {rankingLoading ? 'Computing conviction scores...' : 'No symbols with qualifying insider activity found in the current window.'}
-          </p>
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-white/[0.06]">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-slate-100 dark:bg-[#0c1222] text-slate-700 dark:text-slate-400 uppercase text-[10px] tracking-wider">
-                <tr>
-                  <th className="py-2.5 px-3.5">Rank</th>
-                  <th className="py-2.5 px-3.5">Symbol</th>
-                  <th className="py-2.5 px-3.5 text-right">Score</th>
-                  <th className="py-2.5 px-3.5">Confidence</th>
-                  <th className="py-2.5 px-3.5 text-right">Net Buying</th>
-                  <th className="py-2.5 px-3.5">Data Coverage</th>
-                  <th className="py-2.5 px-3.5"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.04] font-mono">
-                {ranking.map((r) => (
-                  <tr
-                    key={r.symbol}
-                    onClick={() => inspectSymbol(r.symbol)}
-                    className={`cursor-pointer hover:bg-slate-100/70 dark:hover:bg-white/[0.025] transition-colors ${selectedSymbol === r.symbol ? 'bg-cyan-500/5' : ''}`}
-                  >
-                    <td className="py-2.5 px-3.5 text-slate-500 dark:text-slate-400">#{r.rank}</td>
-                    <td className="py-2.5 px-3.5 font-bold text-slate-900 dark:text-white">{r.symbol}</td>
-                    <td className="py-2.5 px-3.5 text-right font-bold">
-                      <span className={r.overall_score >= 70 ? 'text-emerald-600 dark:text-emerald-400' : r.overall_score >= 40 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}>
-                        {r.overall_score?.toFixed(0)}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3.5 font-sans">
-                      <ConfidenceBadge tier={r.confidence} />
-                    </td>
-                    <td className={`py-2.5 px-3.5 text-right font-bold ${(r.net_buying_value || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                      {r.net_buying_value !== null ? formatValue(r.net_buying_value) : '-'}
-                    </td>
-                    <td className="py-2.5 px-3.5 text-slate-600 dark:text-slate-400 font-sans">
-                      {r.components_available}/{r.components_total} components
-                    </td>
-                    <td className="py-2.5 px-3.5 text-right">
-                      <ChevronRight className="w-3.5 h-3.5 text-slate-400 inline-block" />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
-        )}
-      </div>
+          <Button type="submit" size="sm" className="h-9">
+            Score It
+          </Button>
+        </form>
+      </PageHeader>
 
-      {/* Detail Panel */}
+      {/* Conviction Leaderboard Ranking */}
+      <Card>
+        <CardHeader className="py-3 px-4 border-b border-border/60">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-xs font-bold uppercase tracking-wider">
+                Top Conviction Ranking (Active Insider Activity, Last 180 Days)
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Highest ranked securities based on multi-factor insider accumulation
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              onClick={fetchRanking}
+              disabled={rankingLoading}
+            >
+              <RefreshCw className={cn('w-3.5 h-3.5', rankingLoading && 'animate-spin')} />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {ranking.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-12 text-center">
+              {rankingLoading ? 'Computing conviction scores...' : 'No symbols with qualifying insider activity found in current lookback window.'}
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table className="table-dense">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-16">Rank</TableHead>
+                    <TableHead>Symbol</TableHead>
+                    <TableHead className="text-right">Score</TableHead>
+                    <TableHead>Confidence</TableHead>
+                    <TableHead className="text-right">Net Buying</TableHead>
+                    <TableHead>Data Coverage</TableHead>
+                    <TableHead className="w-10"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="font-mono">
+                  {ranking.map((r) => (
+                    <TableRow
+                      key={r.symbol}
+                      onClick={() => inspectSymbol(r.symbol)}
+                      className={cn(
+                        'cursor-pointer hover:bg-muted/50 transition-colors',
+                        selectedSymbol === r.symbol && 'bg-primary/10'
+                      )}
+                    >
+                      <TableCell className="text-muted-foreground font-bold">#{r.rank}</TableCell>
+                      <TableCell className="font-bold text-foreground">{r.symbol}</TableCell>
+                      <TableCell className="text-right font-bold">
+                        <span className={cn(
+                          r.overall_score >= 70 ? 'text-positive' : r.overall_score >= 40 ? 'text-warning' : 'text-negative'
+                        )}>
+                          {r.overall_score?.toFixed(0)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="font-sans">
+                        <ConfidenceBadge tier={r.confidence} />
+                      </TableCell>
+                      <TableCell className={cn('text-right font-bold', (r.net_buying_value || 0) >= 0 ? 'text-positive' : 'text-negative')}>
+                        {r.net_buying_value !== null ? formatValue(r.net_buying_value) : '-'}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground font-sans text-xs">
+                        {r.components_available}/{r.components_total} components
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <ChevronRight className="w-4 h-4 text-muted-foreground inline-block" />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Loading state for single stock detail */}
       {detailLoading && (
-        <div className="glass-panel p-10 rounded-2xl text-center text-xs text-slate-500 dark:text-slate-400">
-          <span className="w-4 h-4 border-2 border-cyan-500 dark:border-cyan-400 border-t-transparent rounded-full animate-spin inline-block mr-2 align-middle" />
+        <Card className="p-12 text-center text-xs text-muted-foreground">
+          <span className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin inline-block mr-2 align-middle" />
           Computing Insider Conviction Score for {selectedSymbol}...
-        </div>
+        </Card>
       )}
 
       {detailError && (
-        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2 font-medium">
+        <Card className="border-destructive/40 bg-destructive/10 text-destructive text-xs p-4 flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-          {detailError}
-        </div>
+          <span>{detailError}</span>
+        </Card>
       )}
 
+      {/* Detail Panel */}
       {scoreDetail && explanation && !detailLoading && (
         <div className="space-y-6">
-          {/* Score Header */}
-          <div className="glass-panel p-6 rounded-2xl">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 mb-4 border-b border-slate-200 dark:border-white/[0.08]">
-              <div className="flex items-center gap-5">
-                <ScoreGauge score={scoreDetail.overall_score} />
-                <div>
-                  <div className="text-lg font-black text-slate-900 dark:text-white">{scoreDetail.symbol}</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{explanation.components_summary}</div>
-                  <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono mt-0.5">
-                    Model {scoreDetail.model_version} · As of {scoreDetail.as_of_date}
+          {/* Detailed Score Header Card */}
+          <Card>
+            <CardHeader className="py-4 px-6 border-b border-border/60">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-5">
+                  <ScoreGauge score={scoreDetail.overall_score} />
+                  <div>
+                    <div className="text-xl font-black text-foreground font-mono">{scoreDetail.symbol}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{explanation.components_summary}</div>
+                    <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                      Model {scoreDetail.model_version} · As of {scoreDetail.as_of_date}
+                    </div>
                   </div>
                 </div>
+                <ConfidenceBadge tier={scoreDetail.confidence.tier} />
               </div>
-              <ConfidenceBadge tier={scoreDetail.confidence.tier} />
-            </div>
-
-            {/* Component Breakdown */}
-            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-white/[0.06]">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-slate-100 dark:bg-[#0c1222] text-slate-700 dark:text-slate-400 uppercase text-[10px] tracking-wider">
-                  <tr>
-                    <th className="py-2.5 px-3.5">Component</th>
-                    <th className="py-2.5 px-3.5 text-right">Score</th>
-                    <th className="py-2.5 px-3.5 text-right">Configured Weight</th>
-                    <th className="py-2.5 px-3.5 text-right">Normalized Weight</th>
-                    <th className="py-2.5 px-3.5 text-right">Weighted Contribution</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.04] font-mono">
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table className="table-dense">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Component Factor</TableHead>
+                    <TableHead className="text-right">Factor Score</TableHead>
+                    <TableHead className="text-right">Configured Weight</TableHead>
+                    <TableHead className="text-right">Normalized Weight</TableHead>
+                    <TableHead className="text-right">Weighted Contribution</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="font-mono">
                   {Object.entries(scoreDetail.components).map(([key, c]) => (
-                    <tr key={key} className={!c.available ? 'opacity-50' : ''}>
-                      <td className="py-2.5 px-3.5 font-sans font-bold text-slate-900 dark:text-white">{c.label}</td>
-                      <td className="py-2.5 px-3.5 text-right">{c.available ? c.score.toFixed(0) : 'N/A'}</td>
-                      <td className="py-2.5 px-3.5 text-right text-slate-500 dark:text-slate-400">{c.configured_weight_pct.toFixed(0)}%</td>
-                      <td className="py-2.5 px-3.5 text-right text-slate-500 dark:text-slate-400">{c.available ? `${c.normalized_weight_pct.toFixed(1)}%` : '-'}</td>
-                      <td className="py-2.5 px-3.5 text-right font-bold text-cyan-700 dark:text-cyan-300">
+                    <TableRow key={key} className={!c.available ? 'opacity-50' : ''}>
+                      <TableCell className="font-sans font-bold text-foreground">{c.label}</TableCell>
+                      <TableCell className="text-right">{c.available ? c.score.toFixed(0) : 'N/A'}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{c.configured_weight_pct.toFixed(0)}%</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{c.available ? `${c.normalized_weight_pct.toFixed(1)}%` : '-'}</TableCell>
+                      <TableCell className="text-right font-bold text-primary">
                         {c.available ? `${c.score.toFixed(0)} × ${c.normalized_weight_pct.toFixed(1)}% = ${c.weighted_contribution.toFixed(1)}` : 'Unavailable'}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
 
-          {/* Why This Score */}
-          <div className="glass-panel p-6 rounded-2xl">
-            <h3 className="text-sm font-extrabold text-slate-900 dark:text-white tracking-tight mb-4 flex items-center gap-2">
-              <Info className="w-4 h-4 text-cyan-600 dark:text-cyan-400" /> Why This Stock Scored {scoreDetail.overall_score?.toFixed(0) ?? 'N/A'}
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-2">Positive Factors</div>
-                {explanation.positive.length === 0 ? (
-                  <p className="text-xs text-slate-500 dark:text-slate-400">No positive contributors identified.</p>
-                ) : (
-                  <ul className="space-y-1.5">
-                    {explanation.positive.map((p, i) => (
-                      <li key={i} className="text-xs text-slate-700 dark:text-slate-300 flex items-start gap-2">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-0.5" />
-                        {p}
-                      </li>
-                    ))}
-                  </ul>
-                )}
+          {/* Why This Score Card */}
+          <Card>
+            <CardHeader className="py-3 px-4 border-b border-border/60">
+              <CardTitle className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                <Info className="w-4 h-4 text-primary" /> Conviction Factor Attribution Drivers
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <div className="text-xs font-bold text-positive uppercase tracking-wider mb-2">Positive Factors</div>
+                  {explanation.positive.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No positive contributors identified.</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {explanation.positive.map((p, i) => (
+                        <li key={i} className="text-xs text-foreground flex items-start gap-2">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-positive flex-shrink-0 mt-0.5" />
+                          <span>{p}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-warning uppercase tracking-wider mb-2">Caution / Missing-Data Factors</div>
+                  {explanation.negative.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No negative factors or missing-data flags.</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {explanation.negative.map((n, i) => (
+                        <li key={i} className="text-xs text-foreground flex items-start gap-2">
+                          <AlertTriangle className="w-3.5 h-3.5 text-warning flex-shrink-0 mt-0.5" />
+                          <span>{n}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
-              <div>
-                <div className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-2">Negative / Missing-Data Factors</div>
-                {explanation.negative.length === 0 ? (
-                  <p className="text-xs text-slate-500 dark:text-slate-400">No negative factors or missing-data flags.</p>
-                ) : (
-                  <ul className="space-y-1.5">
-                    {explanation.negative.map((n, i) => (
-                      <li key={i} className="text-xs text-slate-700 dark:text-slate-300 flex items-start gap-2">
-                        <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-                        {n}
-                      </li>
-                    ))}
-                  </ul>
-                )}
+              <div className="pt-3 border-t border-border text-[11px] text-muted-foreground font-mono">
+                {explanation.confidence_summary}
               </div>
-            </div>
-            <div className="mt-5 pt-4 border-t border-slate-200 dark:border-white/[0.08] text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-              {explanation.confidence_summary}
-            </div>
-          </div>
+              <p className="text-[10px] text-muted-foreground italic">{explanation.disclaimer}</p>
+            </CardContent>
+          </Card>
 
-          {/* Supporting Transactions */}
-          <div className="glass-panel p-6 rounded-2xl">
-            <h3 className="text-sm font-extrabold text-slate-900 dark:text-white tracking-tight mb-4">
-              Supporting Transactions ({scoreDetail.supporting_transactions.length})
-            </h3>
-            {scoreDetail.supporting_transactions.length === 0 ? (
-              <p className="text-xs text-slate-500 dark:text-slate-400 py-4 text-center">No transactions in the current lookback window.</p>
-            ) : (
-              <div className="overflow-x-auto max-h-80 rounded-xl border border-slate-200 dark:border-white/[0.06]">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead className="sticky top-0 bg-slate-100 dark:bg-[#0c1222] text-slate-700 dark:text-slate-400 uppercase text-[10px] tracking-wider">
-                    <tr>
-                      <th className="py-2.5 px-3.5">Date</th>
-                      <th className="py-2.5 px-3.5">Category</th>
-                      <th className="py-2.5 px-3.5">Insider / Client</th>
-                      <th className="py-2.5 px-3.5">Role</th>
-                      <th className="py-2.5 px-3.5">Action</th>
-                      <th className="py-2.5 px-3.5 text-right">Quantity</th>
-                      <th className="py-2.5 px-3.5 text-right">Value</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.04] font-mono">
-                    {scoreDetail.supporting_transactions.map((t) => (
-                      <tr key={`${t.deal_category}-${t.id}`} className="hover:bg-slate-100/70 dark:hover:bg-white/[0.02]">
-                        <td className="py-2.5 px-3.5 text-slate-700 dark:text-slate-300">{t.trade_date}</td>
-                        <td className="py-2.5 px-3.5 font-sans"><span className="badge-tag">{t.deal_category}</span></td>
-                        <td className="py-2.5 px-3.5 font-sans text-slate-800 dark:text-slate-200 truncate max-w-[160px]" title={t.client_name}>{t.client_name || 'N/A'}</td>
-                        <td className="py-2.5 px-3.5 font-sans text-slate-500 dark:text-slate-400">{t.role || 'Unavailable'}</td>
-                        <td className="py-2.5 px-3.5 font-sans">
-                          <span className={t.action === 'BUY' ? 'badge-buy' : 'badge-sell'}>{t.action}</span>
-                        </td>
-                        <td className="py-2.5 px-3.5 text-right">{t.quantity ? Number(t.quantity).toLocaleString() : '-'}</td>
-                        <td className="py-2.5 px-3.5 text-right text-cyan-700 dark:text-cyan-300 font-bold">
-                          {t.total_value ? formatValue(t.total_value) : '-'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          <p className="text-[10px] text-slate-400 dark:text-slate-600 italic px-2">{explanation.disclaimer}</p>
+          {/* Supporting Transactions Card */}
+          <Card>
+            <CardHeader className="py-3 px-4 border-b border-border/60">
+              <CardTitle className="text-xs font-bold uppercase tracking-wider">
+                Supporting Transactions ({scoreDetail.supporting_transactions.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {scoreDetail.supporting_transactions.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-6 text-center">No transactions recorded in the current lookback window.</p>
+              ) : (
+                <div className="overflow-x-auto max-h-80">
+                  <Table className="table-dense">
+                    <TableHeader className="sticky top-0 bg-muted/90 backdrop-blur z-10">
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Insider / Client</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead>Action</TableHead>
+                        <TableHead className="text-right">Quantity</TableHead>
+                        <TableHead className="text-right">Value</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody className="font-mono">
+                      {scoreDetail.supporting_transactions.map((t) => (
+                        <TableRow key={`${t.deal_category}-${t.id}`}>
+                          <TableCell className="text-muted-foreground">{t.trade_date}</TableCell>
+                          <TableCell className="font-sans">
+                            <Badge variant="outline" className="text-[10px]">{t.deal_category}</Badge>
+                          </TableCell>
+                          <TableCell className="font-sans text-foreground truncate max-w-[180px]" title={t.client_name}>
+                            {t.client_name || 'N/A'}
+                          </TableCell>
+                          <TableCell className="font-sans text-muted-foreground">{t.role || 'Unavailable'}</TableCell>
+                          <TableCell className="font-sans">
+                            <Badge variant={t.action === 'BUY' ? 'positive' : 'negative'} className="text-[10px]">
+                              {t.action}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">{t.quantity ? Number(t.quantity).toLocaleString() : '-'}</TableCell>
+                          <TableCell className="text-right font-bold text-primary">
+                            {t.total_value ? formatValue(t.total_value) : '-'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>
