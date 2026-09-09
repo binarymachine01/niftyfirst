@@ -4,17 +4,22 @@ Simulates trading strategies against historical daily price candles in nse_equit
 """
 
 import math
+import time
+import uuid
 import logging
+import statistics
 from typing import List, Dict, Any, Optional
 from datetime import datetime, date
 from collections import defaultdict
 
 try:
-    from backend.database import fetch_all
+    from backend.database import fetch_all, fetch_one
     from backend.engine.symbol_matcher import matcher, MatchStatus
+    from backend.engine import backtest_persistence
 except ImportError:
-    from ..database import fetch_all
+    from ..database import fetch_all, fetch_one
     from .symbol_matcher import matcher, MatchStatus
+    from . import backtest_persistence
 
 from scripts.common import ENABLED_EXCHANGES
 
@@ -429,6 +434,353 @@ class BacktestEngine:
             "trades": [],
             "symbol_mapping_audit": symbol_mapping_audit,
         }
+
+    def get_data_availability(self) -> Dict[str, Any]:
+        """Returns the min and max date ranges for EOD prices and deals in the database."""
+        eod_row = fetch_one("SELECT MIN(trade_date) as min_date, MAX(trade_date) as max_date, COUNT(DISTINCT trade_date) as trading_days FROM nse_equity_eod;")
+        deal_row = fetch_one("SELECT MIN(trade_date) as min_date, MAX(trade_date) as max_date, COUNT(*) as total_deals FROM stockedge_all_deals_view WHERE UPPER(exchange_name) = 'NSE';")
+
+        min_eod = str(eod_row["min_date"]) if eod_row and eod_row.get("min_date") else None
+        max_eod = str(eod_row["max_date"]) if eod_row and eod_row.get("max_date") else None
+        min_deal = str(deal_row["min_date"]) if deal_row and deal_row.get("min_date") else None
+        max_deal = str(deal_row["max_date"]) if deal_row and deal_row.get("max_date") else None
+
+        return {
+            "eod": {
+                "min_date": min_eod,
+                "max_date": max_eod,
+                "trading_days": int(eod_row.get("trading_days") or 0) if eod_row else 0,
+                "display": f"{datetime.strptime(min_eod, '%Y-%m-%d').strftime('%d-%b-%Y')} -> {datetime.strptime(max_eod, '%Y-%m-%d').strftime('%d-%b-%Y')}" if min_eod and max_eod else "No EOD Data Available"
+            },
+            "deals": {
+                "min_date": min_deal,
+                "max_date": max_deal,
+                "total_deals": int(deal_row.get("total_deals") or 0) if deal_row else 0,
+                "display": f"{datetime.strptime(min_deal, '%Y-%m-%d').strftime('%d-%b-%Y')} -> {datetime.strptime(max_deal, '%Y-%m-%d').strftime('%d-%b-%Y')}" if min_deal and max_deal else "No Deals Available"
+            }
+        }
+
+    def run_date_range_backtest(
+        self,
+        from_date: str,
+        to_date: str,
+        deal_types: Optional[List[str]] = None,
+        actions: Optional[List[str]] = None,
+        exchange: str = "NSE",
+        min_value_lakhs: float = 0.0,
+    ) -> Dict[str, Any]:
+        """
+        Executes full historical deal signal backtest across a user-selected date range.
+        Evaluates 1D, 5D, 10D, 20D, and 60D trading-day look-forward performance for all
+        eligible deals, enforcing strict symbol governance safety.
+        """
+        start_time_ns = time.perf_counter_ns()
+        run_id = f"btr_{uuid.uuid4().hex[:12]}"
+
+        # 1. Validate Date Range
+        try:
+            d_from = datetime.strptime(from_date, "%Y-%m-%d").date()
+            d_to = datetime.strptime(to_date, "%Y-%m-%d").date()
+        except ValueError as e:
+            raise ValueError(f"Invalid date format (must be YYYY-MM-DD): {e}")
+
+        if d_from > d_to:
+            raise ValueError(f"From Date ({from_date}) cannot be after To Date ({to_date}).")
+
+        # Check EOD availability bounds
+        availability = self.get_data_availability()
+        eod_min_str = availability["eod"]["min_date"]
+        eod_max_str = availability["eod"]["max_date"]
+
+        if eod_min_str and to_date < eod_min_str:
+            raise ValueError(f"Selected date range ({from_date} to {to_date}) precedes available EOD data starting {eod_min_str}.")
+
+        categories = deal_types or ["Insider Trading", "SAST Deals", "Block Deals", "Bulk Deals"]
+
+        # Normalize action filters
+        allowed_actions = []
+        if actions:
+            for a in actions:
+                a_up = a.strip().upper()
+                if a_up in ("BUY", "SELL"):
+                    allowed_actions.append(a_up)
+                elif a_up in ("ALL", "BOTH"):
+                    allowed_actions.extend(["BUY", "SELL"])
+            allowed_actions = list(dict.fromkeys(allowed_actions))
+        if not allowed_actions:
+            allowed_actions = ["BUY", "SELL"]
+
+        # 2. Query ALL deals in date range (no silent limits)
+        query = """
+        SELECT
+            v.deal_category,
+            v.id,
+            v.trade_date,
+            v.exchange_name,
+            v.security_name,
+            v.client_name,
+            v.action,
+            v.quantity,
+            v.price,
+            v.total_value,
+            v.mode_description,
+            COALESCE(i.security_slug, s.security_slug, blk.security_slug, blk2.security_slug, '') as security_slug
+        FROM stockedge_all_deals_view v
+        LEFT JOIN stockedge_insider_deals i ON v.id = i.id AND v.deal_category = 'Insider Trading'
+        LEFT JOIN stockedge_sast_deals s ON v.id = s.id AND v.deal_category = 'SAST Deals'
+        LEFT JOIN stockedge_block_deals blk ON v.id = blk.id AND v.deal_category = 'Block Deals'
+        LEFT JOIN stockedge_bulk_deals blk2 ON v.id = blk2.id AND v.deal_category = 'Bulk Deals'
+        WHERE v.trade_date >= %s AND v.trade_date <= %s
+          AND v.deal_category = ANY(%s)
+          AND UPPER(v.action) = ANY(%s)
+          AND UPPER(v.exchange_name) = %s
+        """
+        params = [from_date, to_date, categories, allowed_actions, exchange.upper()]
+        if min_value_lakhs > 0:
+            query += " AND (v.total_value >= %s OR v.total_value IS NULL)"
+            params.append(min_value_lakhs * 100000)
+
+        query += " ORDER BY v.trade_date ASC, v.id ASC;"
+        raw_deals = fetch_all(query, tuple(params))
+        total_signals = len(raw_deals)
+
+        # 3. Resolve and Validate Symbols using SymbolMatcher
+        eligible_candidates = []
+        excluded_records = []
+        needed_symbols = set()
+
+        for d in raw_deals:
+            sec_name = d["security_name"]
+            slug = d.get("security_slug")
+            match = matcher.resolve_symbol_detailed(sec_name, slug)
+            status = match["match_status"]
+            resolved_sym = match.get("resolved_nse_symbol")
+
+            if status in (MatchStatus.MATCHED, MatchStatus.MANUAL_OVERRIDE) and resolved_sym:
+                needed_symbols.add(resolved_sym)
+                eligible_candidates.append({
+                    "deal": d,
+                    "symbol": resolved_sym,
+                    "match": match,
+                })
+            elif status == MatchStatus.LOW_CONFIDENCE:
+                excluded_records.append({
+                    "deal_id": d["id"],
+                    "deal_date": str(d["trade_date"]),
+                    "deal_type": d["deal_category"],
+                    "action": d["action"].upper(),
+                    "security_name": sec_name,
+                    "client_name": d.get("client_name"),
+                    "deal_value": safe_float(d.get("total_value")),
+                    "reason": "LOW_CONFIDENCE_SYMBOL",
+                    "match_status": status,
+                    "candidate_symbol": resolved_sym,
+                    "match_confidence": match.get("match_confidence", 0.0),
+                })
+            else:
+                excluded_records.append({
+                    "deal_id": d["id"],
+                    "deal_date": str(d["trade_date"]),
+                    "deal_type": d["deal_category"],
+                    "action": d["action"].upper(),
+                    "security_name": sec_name,
+                    "client_name": d.get("client_name"),
+                    "deal_value": safe_float(d.get("total_value")),
+                    "reason": "UNMATCHED_SYMBOL",
+                    "match_status": status,
+                    "candidate_symbol": None,
+                    "match_confidence": match.get("match_confidence", 0.0),
+                })
+
+        # 4. Batch Load EOD Price History
+        price_history = self.load_price_history(list(needed_symbols))
+
+        # 5. Calculate Look-Forward Performance (Trading Days)
+        deal_results = []
+        horizons = [1, 5, 10, 20, 60]
+
+        for item in eligible_candidates:
+            d = item["deal"]
+            sym = item["symbol"]
+            m = item["match"]
+
+            candles = price_history.get(sym, [])
+            deal_date = d["trade_date"]
+            if isinstance(deal_date, str):
+                deal_date = datetime.strptime(deal_date, "%Y-%m-%d").date()
+
+            # Candles on or after deal date
+            future_candles = [c for c in candles if c["trade_date"] >= deal_date]
+            if not future_candles:
+                excluded_records.append({
+                    "deal_id": d["id"],
+                    "deal_date": str(d["trade_date"]),
+                    "deal_type": d["deal_category"],
+                    "action": d["action"].upper(),
+                    "security_name": d["security_name"],
+                    "client_name": d.get("client_name"),
+                    "deal_value": safe_float(d.get("total_value")),
+                    "reason": "INSUFFICIENT_EOD_HISTORY",
+                    "match_status": m["match_status"],
+                    "candidate_symbol": sym,
+                    "match_confidence": m.get("match_confidence", 1.0),
+                })
+                continue
+
+            entry_candle = future_candles[0]
+            entry_price = entry_candle["open"] if entry_candle["open"] > 0 else entry_candle["close"]
+            if entry_price <= 0:
+                excluded_records.append({
+                    "deal_id": d["id"],
+                    "deal_date": str(d["trade_date"]),
+                    "deal_type": d["deal_category"],
+                    "action": d["action"].upper(),
+                    "security_name": d["security_name"],
+                    "client_name": d.get("client_name"),
+                    "deal_value": safe_float(d.get("total_value")),
+                    "reason": "MISSING_ENTRY_PRICE",
+                    "match_status": m["match_status"],
+                    "candidate_symbol": sym,
+                    "match_confidence": m.get("match_confidence", 1.0),
+                })
+                continue
+
+            subsequent_candles = future_candles[1:]
+            is_buy = d["action"].upper() == "BUY"
+
+            returns = {}
+            for h in horizons:
+                raw_key = f"raw_return_{h}d"
+                sig_key = f"signal_return_{h}d"
+                if len(subsequent_candles) >= h:
+                    target_candle = subsequent_candles[h - 1]
+                    fut_price = target_candle["close"]
+                    if fut_price is not None and fut_price > 0:
+                        raw_ret = ((fut_price - entry_price) / entry_price) * 100.0
+                        sig_ret = raw_ret if is_buy else -raw_ret
+                        returns[raw_key] = round(raw_ret, 2)
+                        returns[sig_key] = round(sig_ret, 2)
+                    else:
+                        returns[raw_key] = None
+                        returns[sig_key] = None
+                else:
+                    returns[raw_key] = None
+                    returns[sig_key] = None
+
+            deal_results.append({
+                "deal_id": d["id"],
+                "deal_date": str(d["trade_date"]),
+                "deal_type": d["deal_category"],
+                "action": d["action"].upper(),
+                "security_name": d["security_name"],
+                "nse_symbol": sym,
+                "company_name": m.get("company_name") or d["security_name"],
+                "promoter_client": d.get("client_name"),
+                "quantity": safe_float(d.get("quantity")) if d.get("quantity") is not None else None,
+                "deal_price": safe_float(d.get("price")),
+                "deal_value": safe_float(d.get("total_value")),
+                "entry_price": round(entry_price, 2),
+                "entry_date": str(entry_candle["trade_date"]),
+                **returns,
+                "signal_return": returns.get("signal_return_20d"),
+                "match_status": m["match_status"],
+                "match_confidence": m.get("match_confidence", 1.0),
+                "match_method": m.get("match_method", "EXACT"),
+            })
+
+        # 6. Aggregate Statistics
+        def calc_stats_for(deals_subset: List[Dict[str, Any]], h: int) -> Dict[str, Any]:
+            key = f"signal_return_{h}d"
+            vals = [r[key] for r in deals_subset if r.get(key) is not None]
+            if not vals:
+                return {
+                    "total_observations": 0, "positive_count": 0, "negative_count": 0, "neutral_count": 0,
+                    "win_rate": 0.0, "avg_return": 0.0, "median_return": 0.0,
+                    "best_return": 0.0, "worst_return": 0.0, "pos_pct": 0.0, "neg_pct": 0.0
+                }
+            pos = [v for v in vals if v > 0]
+            neg = [v for v in vals if v < 0]
+            neu = [v for v in vals if v == 0]
+            n = len(vals)
+            return {
+                "total_observations": n,
+                "positive_count": len(pos),
+                "negative_count": len(neg),
+                "neutral_count": len(neu),
+                "win_rate": round((len(pos) / n) * 100.0, 2),
+                "avg_return": round(sum(vals) / n, 2),
+                "median_return": round(statistics.median(vals), 2),
+                "best_return": round(max(vals), 2),
+                "worst_return": round(min(vals), 2),
+                "pos_pct": round((len(pos) / n) * 100.0, 2),
+                "neg_pct": round((len(neg) / n) * 100.0, 2),
+            }
+
+        horizon_performance = {f"{h}D": calc_stats_for(deal_results, h) for h in horizons}
+
+        # Deal Type Breakdown
+        deal_type_perf = {}
+        for cat in categories:
+            cat_deals = [r for r in deal_results if r["deal_type"] == cat]
+            deal_type_perf[cat] = {
+                "signal_count": len(cat_deals),
+                "horizons": {f"{h}D": calc_stats_for(cat_deals, h) for h in horizons}
+            }
+
+        # BUY vs SELL Breakdown
+        action_perf = {}
+        for act in ["BUY", "SELL"]:
+            act_deals = [r for r in deal_results if r["action"] == act]
+            action_perf[act] = {
+                "signal_count": len(act_deals),
+                "horizons": {f"{h}D": calc_stats_for(act_deals, h) for h in horizons}
+            }
+
+        buy_signals = sum(1 for r in deal_results if r["action"] == "BUY")
+        sell_signals = sum(1 for r in deal_results if r["action"] == "SELL")
+
+        summary = {
+            "total_signals": total_signals,
+            "eligible_signals": len(deal_results),
+            "excluded_signals": len(excluded_records),
+            "buy_signals": buy_signals,
+            "sell_signals": sell_signals,
+            "win_rate_20d": horizon_performance["20D"]["win_rate"],
+            "avg_return_20d": horizon_performance["20D"]["avg_return"],
+            "win_rate_60d": horizon_performance["60D"]["win_rate"],
+            "avg_return_60d": horizon_performance["60D"]["avg_return"],
+            "horizon_performance": horizon_performance,
+        }
+
+        execution_time_ms = int((time.perf_counter_ns() - start_time_ns) / 1_000_000)
+
+        run_record = {
+            "run_id": run_id,
+            "from_date": from_date,
+            "to_date": to_date,
+            "deal_types": categories,
+            "actions": allowed_actions,
+            "exchange": exchange.upper(),
+            "min_value_lakhs": min_value_lakhs,
+            "total_signals": total_signals,
+            "eligible_signals": len(deal_results),
+            "excluded_signals": len(excluded_records),
+            "summary": summary,
+            "deal_type_performance": deal_type_perf,
+            "action_performance": action_perf,
+            "deals": deal_results,
+            "excluded_records": excluded_records,
+            "execution_time_ms": execution_time_ms,
+            "status": "COMPLETED",
+        }
+
+        # Persist run to DB
+        try:
+            backtest_persistence.save_run(run_record)
+        except Exception as e:
+            logger.warning(f"Could not persist backtest run {run_id}: {e}")
+
+        return run_record
 
 
 # Global singleton engine
