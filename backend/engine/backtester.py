@@ -592,38 +592,158 @@ class BacktestEngine:
                     "match_confidence": match.get("match_confidence", 0.0),
                 })
 
-        # 4. Batch Load EOD Price History
-        price_history = self.load_price_history(list(needed_symbols))
-
-        # 5. Calculate Look-Forward Performance (Trading Days)
-        deal_results = []
-        horizons = [1, 5, 10, 20, 60]
-
+        # 4. Consolidate Eligible Deals by NSE Symbol + Signal Date + Deal Type
+        # Avoids duplicate security rows, aggregates buy/sell values, calculates
+        # dominant action (BUY, SELL, MIXED), and computes weighted average deal price.
+        grouped_candidates = {}
         for item in eligible_candidates:
             d = item["deal"]
             sym = item["symbol"]
             m = item["match"]
+            trade_date_str = str(d["trade_date"])
+            deal_cat = d["deal_category"]
+            key = (sym, trade_date_str, deal_cat)
 
+            if key not in grouped_candidates:
+                grouped_candidates[key] = {
+                    "symbol": sym,
+                    "signal_date": trade_date_str,
+                    "deal_type": deal_cat,
+                    "security_name": d["security_name"],
+                    "company_name": m.get("company_name") or d["security_name"],
+                    "match_status": m["match_status"],
+                    "match_confidence": m.get("match_confidence", 1.0),
+                    "match_method": m.get("match_method", "EXACT"),
+                    "items": [],
+                }
+            grouped_candidates[key]["items"].append(item)
+
+        consolidated_groups = []
+        for key, group in grouped_candidates.items():
+            items = group["items"]
+            deals_list = [it["deal"] for it in items]
+
+            buy_deals = [d for d in deals_list if (d.get("action") or "").upper() == "BUY"]
+            sell_deals = [d for d in deals_list if (d.get("action") or "").upper() == "SELL"]
+
+            buy_count = len(buy_deals)
+            sell_count = len(sell_deals)
+            total_count = len(deals_list)
+
+            tot_buy_qty = sum(safe_float(d.get("quantity")) for d in buy_deals)
+            tot_sell_qty = sum(safe_float(d.get("quantity")) for d in sell_deals)
+            net_qty = tot_buy_qty - tot_sell_qty
+
+            tot_buy_val = sum(safe_float(d.get("total_value")) for d in buy_deals)
+            tot_sell_val = sum(safe_float(d.get("total_value")) for d in sell_deals)
+            net_buy_val = tot_buy_val - tot_sell_val
+            tot_deal_val = tot_buy_val + tot_sell_val
+
+            # Dominant Action
+            if tot_buy_val > tot_sell_val:
+                dominant_action = "BUY"
+            elif tot_sell_val > tot_buy_val:
+                dominant_action = "SELL"
+            else:
+                dominant_action = "MIXED"
+
+            # Check action filter
+            is_buy_allowed = "BUY" in allowed_actions
+            is_sell_allowed = "SELL" in allowed_actions
+            if is_buy_allowed and not is_sell_allowed:
+                if dominant_action != "BUY":
+                    continue
+            elif is_sell_allowed and not is_buy_allowed:
+                if dominant_action != "SELL":
+                    continue
+
+            # Weighted Average Deal Price = SUM(Qty * Price) / SUM(Qty)
+            weighted_sum = sum(
+                safe_float(d.get("quantity")) * safe_float(d.get("price"))
+                for d in deals_list
+                if safe_float(d.get("quantity")) > 0 and safe_float(d.get("price")) > 0
+            )
+            valid_qty = sum(
+                safe_float(d.get("quantity"))
+                for d in deals_list
+                if safe_float(d.get("quantity")) > 0 and safe_float(d.get("price")) > 0
+            )
+
+            if valid_qty > 0:
+                weighted_deal_price = round(weighted_sum / valid_qty, 2)
+            elif (tot_buy_qty + tot_sell_qty) > 0 and tot_deal_val > 0:
+                weighted_deal_price = round(tot_deal_val / (tot_buy_qty + tot_sell_qty), 2)
+            else:
+                prices = [safe_float(d.get("price")) for d in deals_list if safe_float(d.get("price")) > 0]
+                weighted_deal_price = round(sum(prices) / len(prices), 2) if prices else 0.0
+
+            # Raw underlying deals for expandable drill-down inspection
+            underlying_deals = [
+                {
+                    "id": d["id"],
+                    "trade_date": str(d["trade_date"]),
+                    "deal_category": d["deal_category"],
+                    "action": (d.get("action") or "").upper(),
+                    "client_name": d.get("client_name"),
+                    "quantity": safe_float(d.get("quantity")),
+                    "price": safe_float(d.get("price")),
+                    "total_value": safe_float(d.get("total_value")),
+                    "exchange_name": d.get("exchange_name"),
+                    "mode_description": d.get("mode_description"),
+                }
+                for d in deals_list
+            ]
+
+            consolidated_groups.append({
+                "symbol": group["symbol"],
+                "signal_date": group["signal_date"],
+                "deal_type": group["deal_type"],
+                "action": dominant_action,
+                "security_name": group["security_name"],
+                "company_name": group["company_name"],
+                "transaction_count": total_count,
+                "buy_transaction_count": buy_count,
+                "sell_transaction_count": sell_count,
+                "total_buy_quantity": round(tot_buy_qty, 2),
+                "total_sell_quantity": round(tot_sell_qty, 2),
+                "net_quantity": round(net_qty, 2),
+                "total_buy_value": round(tot_buy_val, 2),
+                "total_sell_value": round(tot_sell_val, 2),
+                "net_buy_value": round(net_buy_val, 2),
+                "total_deal_value": round(tot_deal_val, 2),
+                "deal_price": weighted_deal_price,
+                "match_status": group["match_status"],
+                "match_confidence": group["match_confidence"],
+                "match_method": group["match_method"],
+                "underlying_deals": underlying_deals,
+            })
+
+        # 5. Batch Load EOD Price History
+        price_history = self.load_price_history(list(needed_symbols))
+
+        # 6. Calculate Look-Forward Performance (Trading Days) ONCE per Consolidated Signal
+        deal_results = []
+        horizons = [1, 5, 10, 20, 60]
+
+        for signal in consolidated_groups:
+            sym = signal["symbol"]
             candles = price_history.get(sym, [])
-            deal_date = d["trade_date"]
-            if isinstance(deal_date, str):
-                deal_date = datetime.strptime(deal_date, "%Y-%m-%d").date()
+            deal_date = datetime.strptime(signal["signal_date"], "%Y-%m-%d").date()
 
-            # Candles on or after deal date
             future_candles = [c for c in candles if c["trade_date"] >= deal_date]
             if not future_candles:
                 excluded_records.append({
-                    "deal_id": d["id"],
-                    "deal_date": str(d["trade_date"]),
-                    "deal_type": d["deal_category"],
-                    "action": d["action"].upper(),
-                    "security_name": d["security_name"],
-                    "client_name": d.get("client_name"),
-                    "deal_value": safe_float(d.get("total_value")),
+                    "deal_id": signal["underlying_deals"][0]["id"] if signal["underlying_deals"] else None,
+                    "deal_date": signal["signal_date"],
+                    "deal_type": signal["deal_type"],
+                    "action": signal["action"],
+                    "security_name": signal["security_name"],
+                    "client_name": f"{signal['transaction_count']} transactions",
+                    "deal_value": signal["total_deal_value"],
                     "reason": "INSUFFICIENT_EOD_HISTORY",
-                    "match_status": m["match_status"],
+                    "match_status": signal["match_status"],
                     "candidate_symbol": sym,
-                    "match_confidence": m.get("match_confidence", 1.0),
+                    "match_confidence": signal["match_confidence"],
                 })
                 continue
 
@@ -631,22 +751,22 @@ class BacktestEngine:
             entry_price = entry_candle["open"] if entry_candle["open"] > 0 else entry_candle["close"]
             if entry_price <= 0:
                 excluded_records.append({
-                    "deal_id": d["id"],
-                    "deal_date": str(d["trade_date"]),
-                    "deal_type": d["deal_category"],
-                    "action": d["action"].upper(),
-                    "security_name": d["security_name"],
-                    "client_name": d.get("client_name"),
-                    "deal_value": safe_float(d.get("total_value")),
+                    "deal_id": signal["underlying_deals"][0]["id"] if signal["underlying_deals"] else None,
+                    "deal_date": signal["signal_date"],
+                    "deal_type": signal["deal_type"],
+                    "action": signal["action"],
+                    "security_name": signal["security_name"],
+                    "client_name": f"{signal['transaction_count']} transactions",
+                    "deal_value": signal["total_deal_value"],
                     "reason": "MISSING_ENTRY_PRICE",
-                    "match_status": m["match_status"],
+                    "match_status": signal["match_status"],
                     "candidate_symbol": sym,
-                    "match_confidence": m.get("match_confidence", 1.0),
+                    "match_confidence": signal["match_confidence"],
                 })
                 continue
 
             subsequent_candles = future_candles[1:]
-            is_buy = d["action"].upper() == "BUY"
+            dom_action = signal["action"]
 
             returns = {}
             for h in horizons:
@@ -657,7 +777,12 @@ class BacktestEngine:
                     fut_price = target_candle["close"]
                     if fut_price is not None and fut_price > 0:
                         raw_ret = ((fut_price - entry_price) / entry_price) * 100.0
-                        sig_ret = raw_ret if is_buy else -raw_ret
+                        if dom_action == "BUY":
+                            sig_ret = raw_ret
+                        elif dom_action == "SELL":
+                            sig_ret = -raw_ret
+                        else:  # MIXED
+                            sig_ret = 0.0
                         returns[raw_key] = round(raw_ret, 2)
                         returns[sig_key] = round(sig_ret, 2)
                     else:
@@ -668,27 +793,37 @@ class BacktestEngine:
                     returns[sig_key] = None
 
             deal_results.append({
-                "deal_id": d["id"],
-                "deal_date": str(d["trade_date"]),
-                "deal_type": d["deal_category"],
-                "action": d["action"].upper(),
-                "security_name": d["security_name"],
+                "deal_id": signal["underlying_deals"][0]["id"] if signal["underlying_deals"] else None,
+                "signal_date": signal["signal_date"],
+                "deal_date": signal["signal_date"],
+                "deal_type": signal["deal_type"],
+                "action": signal["action"],
+                "security_name": signal["security_name"],
+                "company_name": signal["company_name"],
                 "nse_symbol": sym,
-                "company_name": m.get("company_name") or d["security_name"],
-                "promoter_client": d.get("client_name"),
-                "quantity": safe_float(d.get("quantity")) if d.get("quantity") is not None else None,
-                "deal_price": safe_float(d.get("price")),
-                "deal_value": safe_float(d.get("total_value")),
+                "transaction_count": signal["transaction_count"],
+                "buy_transaction_count": signal["buy_transaction_count"],
+                "sell_transaction_count": signal["sell_transaction_count"],
+                "total_buy_quantity": signal["total_buy_quantity"],
+                "total_sell_quantity": signal["total_sell_quantity"],
+                "net_quantity": signal["net_quantity"],
+                "total_buy_value": signal["total_buy_value"],
+                "total_sell_value": signal["total_sell_value"],
+                "net_buy_value": signal["net_buy_value"],
+                "total_deal_value": signal["total_deal_value"],
+                "deal_value": signal["total_deal_value"],
+                "deal_price": signal["deal_price"],
                 "entry_price": round(entry_price, 2),
                 "entry_date": str(entry_candle["trade_date"]),
                 **returns,
                 "signal_return": returns.get("signal_return_20d"),
-                "match_status": m["match_status"],
-                "match_confidence": m.get("match_confidence", 1.0),
-                "match_method": m.get("match_method", "EXACT"),
+                "match_status": signal["match_status"],
+                "match_confidence": signal["match_confidence"],
+                "match_method": signal["match_method"],
+                "underlying_deals": signal["underlying_deals"],
             })
 
-        # 6. Aggregate Statistics
+        # 7. Aggregate Statistics across Consolidated Signals
         def calc_stats_for(deals_subset: List[Dict[str, Any]], h: int) -> Dict[str, Any]:
             key = f"signal_return_{h}d"
             vals = [r[key] for r in deals_subset if r.get(key) is not None]
@@ -727,24 +862,28 @@ class BacktestEngine:
                 "horizons": {f"{h}D": calc_stats_for(cat_deals, h) for h in horizons}
             }
 
-        # BUY vs SELL Breakdown
+        # BUY vs SELL vs MIXED Breakdown
         action_perf = {}
-        for act in ["BUY", "SELL"]:
+        for act in ["BUY", "SELL", "MIXED"]:
             act_deals = [r for r in deal_results if r["action"] == act]
-            action_perf[act] = {
-                "signal_count": len(act_deals),
-                "horizons": {f"{h}D": calc_stats_for(act_deals, h) for h in horizons}
-            }
+            if act_deals or act in ["BUY", "SELL"]:
+                action_perf[act] = {
+                    "signal_count": len(act_deals),
+                    "horizons": {f"{h}D": calc_stats_for(act_deals, h) for h in horizons}
+                }
 
         buy_signals = sum(1 for r in deal_results if r["action"] == "BUY")
         sell_signals = sum(1 for r in deal_results if r["action"] == "SELL")
+        mixed_signals = sum(1 for r in deal_results if r["action"] == "MIXED")
 
         summary = {
-            "total_signals": total_signals,
+            "total_signals": len(deal_results),
+            "underlying_transactions": len(raw_deals),
             "eligible_signals": len(deal_results),
             "excluded_signals": len(excluded_records),
             "buy_signals": buy_signals,
             "sell_signals": sell_signals,
+            "mixed_signals": mixed_signals,
             "win_rate_20d": horizon_performance["20D"]["win_rate"],
             "avg_return_20d": horizon_performance["20D"]["avg_return"],
             "win_rate_60d": horizon_performance["60D"]["win_rate"],
@@ -762,7 +901,8 @@ class BacktestEngine:
             "actions": allowed_actions,
             "exchange": exchange.upper(),
             "min_value_lakhs": min_value_lakhs,
-            "total_signals": total_signals,
+            "total_signals": len(deal_results),
+            "underlying_transactions": len(raw_deals),
             "eligible_signals": len(deal_results),
             "excluded_signals": len(excluded_records),
             "summary": summary,

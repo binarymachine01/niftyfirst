@@ -64,7 +64,8 @@ def test_full_deal_backtest_execution():
     )
 
     assert result["run_id"].startswith("btr_")
-    assert result["total_signals"] == result["eligible_signals"] + result["excluded_signals"]
+    assert result["total_signals"] == result["eligible_signals"]
+    assert result["underlying_transactions"] >= result["total_signals"]
     assert "summary" in result
     assert "horizon_performance" in result["summary"]
     assert "1D" in result["summary"]["horizon_performance"]
@@ -79,7 +80,7 @@ def test_full_deal_backtest_execution():
         assert "deal_date" in d
         assert "deal_type" in d
         assert "action" in d
-        assert d["action"] in ("BUY", "SELL")
+        assert d["action"] in ("BUY", "SELL", "MIXED")
         assert d["match_status"] in ("MATCHED", "MANUAL_OVERRIDE")
         assert d["entry_price"] > 0
         assert "raw_return_1d" in d

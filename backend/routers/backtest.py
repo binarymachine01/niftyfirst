@@ -197,27 +197,56 @@ def get_backtest_run_details(run_id: str):
 @router.get("/runs/{run_id}/export")
 def export_backtest_run(
     run_id: str,
-    export_type: str = Query("deals", pattern="^(deals|excluded)$"),
+    export_type: str = Query("deals", pattern="^(deals|signals|transactions|excluded)$"),
     format: str = Query("csv", pattern="^(csv|excel|xlsx)$"),
 ):
     """
-    Exports deal-level results or excluded records to downloadable CSV or Excel (.xlsx).
+    Exports consolidated signal-level results, underlying raw transactions,
+    or excluded records to downloadable CSV or Excel (.xlsx).
     """
     run_data = backtest_persistence.get_run(run_id=run_id, include_deals=True)
     if not run_data:
         raise HTTPException(status_code=404, detail=f"Backtest run '{run_id}' not found.")
 
-    if export_type == "deals":
+    if export_type in ("deals", "signals"):
         rows = run_data.get("deals", [])
         columns = [
-            "deal_id", "deal_date", "deal_type", "action", "security_name", "nse_symbol",
-            "company_name", "promoter_client", "quantity", "deal_price", "deal_value",
-            "entry_date", "entry_price", "raw_return_1d", "raw_return_5d", "raw_return_10d",
-            "raw_return_20d", "raw_return_60d", "signal_return_1d", "signal_return_5d",
-            "signal_return_10d", "signal_return_20d", "signal_return_60d",
-            "match_status", "match_confidence", "match_method"
+            "deal_id", "signal_date", "deal_type", "action", "security_name", "company_name", "nse_symbol",
+            "transaction_count", "buy_transaction_count", "sell_transaction_count",
+            "total_buy_quantity", "total_sell_quantity", "net_quantity",
+            "total_buy_value", "total_sell_value", "net_buy_value", "total_deal_value",
+            "deal_price", "entry_price", "entry_date",
+            "raw_return_1d", "raw_return_5d", "raw_return_10d", "raw_return_20d", "raw_return_60d",
+            "signal_return_1d", "signal_return_5d", "signal_return_10d", "signal_return_20d", "signal_return_60d",
+            "signal_return", "match_status", "match_confidence", "match_method"
         ]
-        filename_prefix = f"backtest_deals_{run_id}"
+        filename_prefix = f"backtest_signals_{run_id}"
+    elif export_type == "transactions":
+        deals = run_data.get("deals", [])
+        rows = []
+        for d in deals:
+            sym = d.get("nse_symbol")
+            sec = d.get("security_name")
+            for ut in d.get("underlying_deals", []):
+                rows.append({
+                    "id": ut.get("id"),
+                    "trade_date": ut.get("trade_date"),
+                    "deal_category": ut.get("deal_category"),
+                    "action": ut.get("action"),
+                    "security_name": sec,
+                    "nse_symbol": sym,
+                    "client_name": ut.get("client_name"),
+                    "quantity": ut.get("quantity"),
+                    "price": ut.get("price"),
+                    "total_value": ut.get("total_value"),
+                    "exchange_name": ut.get("exchange_name"),
+                    "mode_description": ut.get("mode_description"),
+                })
+        columns = [
+            "id", "trade_date", "deal_category", "action", "security_name", "nse_symbol",
+            "client_name", "quantity", "price", "total_value", "exchange_name", "mode_description"
+        ]
+        filename_prefix = f"backtest_transactions_{run_id}"
     else:
         rows = run_data.get("excluded_records", [])
         columns = [
